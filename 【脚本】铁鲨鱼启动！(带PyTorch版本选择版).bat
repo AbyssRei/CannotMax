@@ -52,7 +52,7 @@ if "%torch_choice%"=="cpu" (
     uv add torch torchvision --extra cpu
 ) else if "%torch_choice%"=="cuda" (
     echo 安装CUDA版本的PyTorch...
-    uv add torch torchvision --extra cu128
+    uv add torch torchvision --extra cuda
 ) else (
     echo 跳过PyTorch安装
 )
@@ -70,4 +70,5 @@ exit /b
 for /f "skip=2 tokens=3*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul') do set "SYSTEM_PATH=%%a %%b"
 for /f "skip=2 tokens=3*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USER_PATH=%%a %%b"
 set "PATH=%USER_PATH%;%SYSTEM_PATH%"
+
 exit /b
