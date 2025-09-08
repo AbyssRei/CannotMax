@@ -30,7 +30,7 @@ cpu = [
   "torch",
   "torchvision",
 ]
-cu128 = [
+cuda = [
   "torch>=2.7.0",
   "torchvision>=0.22.0",
 ]
@@ -40,18 +40,18 @@ python-install-mirror = "https://mirror.nju.edu.cn/github-release/astral-sh/pyth
 conflicts = [
   [
     { extra = "cpu" },
-    { extra = "cu128" },
+    { extra = "cuda" },
   ],
 ]
 
 [tool.uv.sources]
 torch = [
   { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu128", extra = "cu128" },
+  { index = "pytorch-cuda", extra = "cuda" },
 ]
 torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu128", extra = "cu128" },
+  { index = "pytorch-cuda", extra = "cuda" },
 ]
 
 [[tool.uv.index]]
@@ -64,6 +64,6 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu129"
 explicit = true
