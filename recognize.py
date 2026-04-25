@@ -266,7 +266,7 @@ class RecognizeMonster:
 
                 # 图像匹配
                 matched_id, confidence = find_best_match(sub_roi, self.ref_images)
-                logger.info(f"target: {idx} confidence: {confidence:.4f}")
+                logger.info(f"target: {idx} matched_id: {matched_id}, confidence: {confidence:.4f}")
                 if matched_id != 0 and confidence < matched_threshold:
                     raise ValueError(f"模板匹配置信度过低: {confidence}")
             except Exception as e:

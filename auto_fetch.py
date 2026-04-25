@@ -66,7 +66,6 @@ class AutoFetch:
         self.start_callback = start_callback
         self.stop_callback = stop_callback
         self.image = None  # 当前图片
-        self.image_name = ""  # 当前图片名称
         self.auto_fetch_running = False  # 自动获取数据的状态
         self.start_time = time.time()  # 记录开始时间
         self.training_duration = training_duration  # 训练时长
@@ -82,7 +81,7 @@ class AutoFetch:
             self.field_recognizer = None
             logger.info("场地识别已禁用，仅收集怪物数据")
 
-    def fill_data(self, battle_result, recoginze_results, image, image_name, result_image, field_recoginze_result):
+    def fill_data(self, battle_result, recoginze_results, monster_image, result_image, field_recoginze_result):
         # 获取队列头的图片
         if self.image_buffer:
             _, previous_image, _ = self.image_buffer[0]  # 获取队列头的图片
@@ -93,6 +92,29 @@ class AutoFetch:
         if previous_image is None:
             logger.error("未找到1秒前的图片，无法保存")
             return
+
+        image_name = self.get_image_name(recoginze_results)  # 生成图片名称
+
+        if intelligent_workers_debug:  # 如果处于debug模式，保存人工审核图片到本地
+            if monster_image is not None:
+                image_path = self.data_folder / "images" / (image_name + ".jpg")
+                cv2.imwrite(image_path, monster_image, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+
+            # if previous_image is not None:
+            #     image_path = self.data_folder / "images" / (image_name+"1s.jpg")
+            #     cv2.imwrite(image_path, previous_image)
+            #     logger.info(f"保存1秒前的图片到 {image_path}")
+
+            # 新增保存结果图片逻辑
+            if image_name:
+                result_image_name = image_name + "_result.jpg"
+                # 缩放到128像素高度
+                (h, w) = result_image.shape[:2]
+                new_height = 128
+                resized_image = cv2.resize(result_image, (int(w * (new_height / h)), new_height))
+                image_path = self.data_folder / "images" / result_image_name
+                cv2.imwrite(image_path, resized_image)
+                logger.info(f"保存结果图片到 {image_path}")
         
         # 原始怪物数据
         left_monster_data = np.zeros(MONSTER_COUNT)
@@ -155,27 +177,7 @@ class AutoFetch:
         )
 
         if intelligent_workers_debug:  # 如果处于debug模式，保存人工审核图片到本地
-            image_name = image_name + ".jpg"
             data_row.append(image_name)
-            if image is not None:
-                image_path = self.data_folder / "images" / image_name
-                cv2.imwrite(image_path, image, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-
-            # if previous_image is not None:
-            #     image_path = self.data_folder / "images" / (image_name+"1s.png")
-            #     cv2.imwrite(image_path, previous_image)
-            #     logger.info(f"保存1秒前的图片到 {image_path}")
-
-            # 新增保存结果图片逻辑
-            if self.image_name:
-                result_image_name = image_name + "_result.jpg"
-                # 缩放到128像素高度
-                (h, w) = result_image.shape[:2]
-                new_height = 128
-                resized_image = cv2.resize(result_image, (int(w * (new_height / h)), new_height))
-                image_path = self.data_folder / "images" / result_image_name
-                cv2.imwrite(str(image_path), resized_image)
-                logger.info(f"保存结果图片到 {image_path}")
 
         with open(self.data_folder / "arknights.csv", "a", newline="") as file:
             writer = csv.writer(file)
@@ -242,9 +244,9 @@ class AutoFetch:
         # 返回左上角是否比右上角饱和度更高
         return saturation_diff > 20
 
-    def save_recoginze_image(self, results, screenshot):
+    def cut_recoginze_image(self, screenshot):
         """
-        生成复核图片
+        裁切复核图片
         """
         x1 = int(0.2479 * self.adb_connector.screen_width)
         y1 = int(0.8444 * self.adb_connector.screen_height)
@@ -255,13 +257,13 @@ class AutoFetch:
         current_image = cv2.resize(
             roi, (roi.shape[1] // 2, roi.shape[0] // 2)
         )  # 保存缩放后的图片到内存
-        return current_image, self.get_image_name(results)
+        return current_image
 
     @staticmethod
-    def get_image_name(results):
+    def get_image_name(recognize_results):
         # 处理结果
         processed_monsters = []  # 用于存储处理的怪物 IDx数量
-        for res in results:
+        for res in recognize_results:
             if "error" not in res:
                 matched_id = res["matched_id"]
                 if matched_id != 0:
@@ -344,24 +346,21 @@ class AutoFetch:
 
         # 人工审核保存测试用截图
         if intelligent_workers_debug:  # 如果处于debug模式且处于自动模式
-            # self.image, self.image_name = self.save_recoginze_image(self.recognize_results, screenshot)
-            # ==============暂时保存图片全部================
-            self.image_name = self.get_image_name(self.recognize_results)
             self.image=screenshot
 
-    def battle_result(self, screenshot):
+    def battle_result(self, result_image):
         # 判断本次是否填写错误，结果不等于None（不是平局或者其他）才能继续
-        if self.calculate_average_yellow(screenshot) != None:
-            if self.calculate_average_yellow(screenshot):
+        if self.calculate_average_yellow(result_image) != None:
+            if self.calculate_average_yellow(result_image):
                 self.fill_data(
-                    "L", self.recognize_results, self.image, self.image_name, screenshot, self.field_recognize_result
+                    "L", self.recognize_results, self.image, result_image, self.field_recognize_result
                 )
                 if self.current_prediction > 0.5:
                     self.incorrect_fill_count += 1  # 更新填写×次数
                 logger.info("填写数据左赢")
             else:
                 self.fill_data(
-                    "R", self.recognize_results, self.image, self.image_name, screenshot, self.field_recognize_result
+                    "R", self.recognize_results, self.image, result_image, self.field_recognize_result
                 )
                 if self.current_prediction < 0.5:
                     self.incorrect_fill_count += 1  # 更新填写×次数
@@ -523,10 +522,14 @@ class AutoFetch:
             logger.warning("自动获取数据已在运行中，请勿重复启动。")
 
     def stop_auto_fetch(self):
+        if not self.auto_fetch_running:
+            return
         self.auto_fetch_running = False
         self.save_statistics_to_log()
         logger.info("停止自动获取")
         self.stop_callback()
-        logging.getLogger().removeHandler(self.log_file_handler)
+        if hasattr(self, "log_file_handler"):
+            logging.getLogger().removeHandler(self.log_file_handler)
+            self.log_file_handler.close()
         # 结束自动获取数据的线程
 
