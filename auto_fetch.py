@@ -38,6 +38,16 @@ def match_images(screenshot, templates):
         results.append((idx, max_val))
     return results
 
+class GameState(Enum):
+    MAIN_MENU = auto()
+    MODE_SELECTION_UNSELECTED = auto()
+    MODE_SELECTION_SELECTED = auto()
+    PRE_BATTLE = auto()
+    IN_BATTLE = auto()
+    SETTLEMENT = auto()
+    FINISHED = auto()
+    UNKNOWN = auto()
+
 class AutoFetch:
     def __init__(
         self,
@@ -390,66 +400,99 @@ class AutoFetch:
 
         results = match_images(screenshot, process_images)
         results = sorted(results, key=lambda x: x[1], reverse=True)
-        # logger.debug(f"处理图片总用时：{time.time()-timea:.3f}s")
+        logger.debug(f"处理图片总用时：{time.time()-timea:.3f}s")
         # logger.info("匹配结果：", results[0])
-        for idx, score in results:
-            if score > 0.5:
-                if idx == 0:
-                    self.adb_connector.click(relative_points[0])
-                    logger.info("加入赛事")
-                elif idx == 1:
-                    if self.game_mode == "30人":
-                        self.adb_connector.click(relative_points[1])
-                        logger.info("竞猜对决30人")
-                        time.sleep(2)
-                        self.adb_connector.click(relative_points[0])
-                        logger.info("开始游戏")
-                    else:
-                        self.adb_connector.click(relative_points[2])
-                        logger.info("自娱自乐")
-                elif idx == 2:
+
+        # 状态判断：取匹配度最高的一个
+        current_state = GameState.UNKNOWN
+        best_idx = -1
+        best_idx, best_score = results[0]
+        if best_score > 0.6:
+            if best_idx == 0:
+                current_state = GameState.MAIN_MENU
+            elif best_idx == 1:
+                current_state = GameState.MODE_SELECTION_UNSELECTED
+            elif best_idx == 2:
+                current_state = GameState.MODE_SELECTION_SELECTED
+            elif best_idx in [3, 4, 5, 15]:
+                current_state = GameState.PRE_BATTLE
+            elif best_idx in [6, 7, 14]:
+                current_state = GameState.IN_BATTLE
+            elif best_idx in [8, 9, 10, 11]:
+                current_state = GameState.SETTLEMENT
+            elif best_idx in [12, 13]:
+                current_state = GameState.FINISHED
+            logger.debug(f"匹配到状态:{current_state}, score:{best_score:.4f}")
+        else:
+            logger.debug(f"状态机匹配置信度过低: idx:{best_idx}, score:{best_score:.4f}")
+            pass
+
+        # 状态执行
+        match current_state:
+            case GameState.MAIN_MENU:
+                # 活动主界面状态，点击加入赛事跳转到选择模式界面（未选择）状态
+                self.adb_connector.click(relative_points[0])
+                logger.info("加入赛事")
+            case GameState.MODE_SELECTION_UNSELECTED:
+                # 选择模式界面（未选择），点击模式跳转到已选择
+                if self.game_mode == "30人":
+                    self.adb_connector.click(relative_points[1])
+                    logger.info("竞猜对决30人")
+                    time.sleep(2)
                     self.adb_connector.click(relative_points[0])
                     logger.info("开始游戏")
-                elif idx in [3, 4, 5, 15]:
-                    time.sleep(1)
-                    # 识别怪物类型数量和地形
-                    screenshot = self.adb_connector.capture_screenshot()
-                    self.recognize_and_predict(screenshot)
+                else:
+                    self.adb_connector.click(relative_points[2])
+                    logger.info("自娱自乐")
+            case GameState.MODE_SELECTION_SELECTED:
+                # 选择模式界面（已选择），点击开始游戏跳转到怪物数量界面状态
+                self.adb_connector.click(relative_points[0])
+                logger.info("开始游戏")
+            case GameState.PRE_BATTLE:
+                # 怪物数量界面状态，识别并开始游戏，跳转到等待结算状态
+                time.sleep(1)
+                # 识别怪物类型数量和地形
+                screenshot = self.adb_connector.capture_screenshot()
+                self.recognize_and_predict(screenshot)
 
-                    # 点击下一轮
-                    if self.is_invest:  # 投资
-                        # 根据预测结果点击投资左/右
-                        if self.current_prediction > 0.5:
-                            if idx == 4:
-                                self.adb_connector.click(relative_points[0])
-                            else:
-                                self.adb_connector.click(relative_points[2])
-                            logger.info("投资右")
-                            time.sleep(3)
+                # 点击下一轮
+                if self.is_invest:  # 投资
+                    # 根据预测结果点击投资左/右
+                    if self.current_prediction > 0.5:
+                        if best_idx == 4:
+                            self.adb_connector.click(relative_points[0])
                         else:
-                            if idx == 4:
-                                self.adb_connector.click(relative_points[1])
-                            else:
-                                self.adb_connector.click(relative_points[3])
-                            logger.info("投资左")
-                            time.sleep(3)
-                        if self.game_mode == "30人":
-                            time.sleep(20)  # 30人模式下，投资后需要等待20秒
-                    else:  # 不投资
-                        self.adb_connector.click(relative_points[4])
-                        logger.info("本轮观望")
+                            self.adb_connector.click(relative_points[2])
+                        logger.info("投资右")
                         time.sleep(3)
-
-                elif idx in [8, 9, 10, 11]:
-                    self.battle_result(screenshot)
-                    time.sleep(5)
-                elif idx in [6, 7, 14]:
-                    pass # 等待结算界面，暂不点击，等识别到结算界面后再点击下一轮按钮
-                    # logger.info("等待战斗结束")
-                elif idx in [12, 13]:  # 返回主页
-                    self.adb_connector.click(relative_points[0])
-                    logger.info("返回主页")
-                break  # 匹配到第一个结果后退出
+                    else:
+                        if best_idx == 4:
+                            self.adb_connector.click(relative_points[1])
+                        else:
+                            self.adb_connector.click(relative_points[3])
+                        logger.info("投资左")
+                        time.sleep(3)
+                    if self.game_mode == "30人":
+                        time.sleep(20)  # 30人模式下，投资后需要等待20秒
+                else:  # 不投资
+                    self.adb_connector.click(relative_points[4])
+                    logger.info("本轮观望")
+                    time.sleep(3)
+            case GameState.IN_BATTLE:
+                # 等待结算状态，战斗中界面，保持状态
+                # logger.info("等待战斗结束")
+                pass
+            case GameState.SETTLEMENT:
+                # 结算状态，该轮次结算界面，识别结果并等待画面变化，根据画面跳转到下一轮次准备阶段或结束状态
+                self.battle_result(screenshot)
+                time.sleep(5)
+            case GameState.FINISHED:
+                # 结束状态，所有轮次结束界面，返回主页并跳转到活动主界面状态
+                self.adb_connector.click(relative_points[0])
+                logger.info("返回主页")
+            case _:
+                # 未匹配到有效界面，保持状态
+                pass
 
     def auto_fetch_loop(self):
         while self.auto_fetch_running:
