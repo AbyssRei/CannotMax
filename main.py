@@ -266,7 +266,7 @@ class ArknightsApp(QMainWindow):
         row1_layout.setContentsMargins(0, 0, 0, 0)
 
         self.duration_label = QLabel("训练时长(小时):")
-        self.duration_entry = QLineEdit("-1")
+        self.duration_entry = QLineEdit("325")
         self.duration_entry.setFixedWidth(50)
 
         self.auto_fetch_button = QPushButton("自动获取数据")

@@ -8,10 +8,9 @@ import time
 from typing import Literal
 import cv2
 import numpy as np
-from sympy import N
 import loadData
-from recognize import MONSTER_COUNT, intelligent_workers_debug, RecognizeMonster
-from config import FIELD_FEATURE_COUNT
+from recognize import intelligent_workers_debug, RecognizeMonster
+from config import MONSTER_COUNT, FIELD_FEATURE_COUNT
 from collections.abc import Callable
 from collections import deque
 from field_recognition import FieldRecognizer
@@ -65,7 +64,7 @@ class AutoFetch:
         self.updater = updater  # 更新统计信息的函数
         self.start_callback = start_callback
         self.stop_callback = stop_callback
-        self.image = None  # 当前图片
+        self.monster_image = None  # 当前轮次怪物图片
         self.auto_fetch_running = False  # 自动获取数据的状态
         self.start_time = time.time()  # 记录开始时间
         self.training_duration = training_duration  # 训练时长
@@ -93,7 +92,7 @@ class AutoFetch:
             logger.error("未找到1秒前的图片，无法保存")
             return
 
-        image_name = self.get_image_name(recoginze_results)  # 生成图片名称
+        image_name = self.get_image_name(recoginze_results, battle_result)  # 生成图片名称
 
         if intelligent_workers_debug:  # 如果处于debug模式，保存人工审核图片到本地
             if monster_image is not None:
@@ -260,7 +259,7 @@ class AutoFetch:
         return current_image
 
     @staticmethod
-    def get_image_name(recognize_results):
+    def get_image_name(recognize_results, battle_result=None):
         # 处理结果
         processed_monsters = []  # 用于存储处理的怪物 IDx数量
         for res in recognize_results:
@@ -269,11 +268,11 @@ class AutoFetch:
                 if matched_id != 0:
                     number = res.get("number", 1)
                     processed_monsters.append(f"{matched_id}x{number}")
-        # 生成唯一的文件名（使用时间戳）
-        timestamp = int(time.time())
+        # 生成唯一的文件名（使用日期时间字符串）
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         # 将处理的怪物信息拼接到文件名中，格式为 IDx数量
         monsters_str = "_".join(processed_monsters)
-        image_name = f"{timestamp}_{monsters_str}"
+        image_name = f"{timestamp}_{monsters_str}_{battle_result}"
         return image_name
 
     def save_statistics_to_log(self):
@@ -346,21 +345,21 @@ class AutoFetch:
 
         # 人工审核保存测试用截图
         if intelligent_workers_debug:  # 如果处于debug模式且处于自动模式
-            self.image=screenshot
+            self.monster_image=screenshot
 
     def battle_result(self, result_image):
         # 判断本次是否填写错误，结果不等于None（不是平局或者其他）才能继续
         if self.calculate_average_yellow(result_image) != None:
             if self.calculate_average_yellow(result_image):
                 self.fill_data(
-                    "L", self.recognize_results, self.image, result_image, self.field_recognize_result
+                    "L", self.recognize_results, self.monster_image, result_image, self.field_recognize_result
                 )
                 if self.current_prediction > 0.5:
                     self.incorrect_fill_count += 1  # 更新填写×次数
                 logger.info("填写数据左赢")
             else:
                 self.fill_data(
-                    "R", self.recognize_results, self.image, result_image, self.field_recognize_result
+                    "R", self.recognize_results, self.monster_image, result_image, self.field_recognize_result
                 )
                 if self.current_prediction < 0.5:
                     self.incorrect_fill_count += 1  # 更新填写×次数
