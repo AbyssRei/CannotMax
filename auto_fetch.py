@@ -25,19 +25,6 @@ except:
     from predict_onnx import CannotModel
     logger.info("Using ONNX model for predictions.")
 
-process_images = [cv2.imread(f"images/process/{i}.png") for i in range(16)]  # 16个模板
-
-def match_images(screenshot, templates):
-    screenshot = cv2.resize(screenshot, (1920, 1080))
-    screenshot_quarter = screenshot[int(screenshot.shape[0] * 3 / 4) :, :]
-    results = []
-    for idx, template in enumerate(templates):
-        template_quarter = template[int(template.shape[0] * 3 / 4) :, :]
-        res = cv2.matchTemplate(screenshot_quarter, template_quarter, cv2.TM_CCOEFF_NORMED)
-        _, max_val, _, _ = cv2.minMaxLoc(res)
-        results.append((idx, max_val))
-    return results
-
 class GameState(Enum):
     MAIN_MENU = auto()
     MODE_SELECTION_UNSELECTED = auto()
@@ -82,6 +69,12 @@ class AutoFetch:
         self.image_buffer = deque(maxlen=5)  # 图片缓存队列，设置队列长短来保存结算前的图片
         self.recognizer = RecognizeMonster()
         self.cannot_model = CannotModel()
+
+        # 初始化状态匹配模板，缩小匹配尺寸提高速度
+        self.MATCH_WIDTH = 1920 // 4
+        self.MATCH_HEIGHT = 1080 // 4 // 4
+        self.processed_template = []
+        self._init_templates()
         # 根据 FIELD_FEATURE_COUNT 决定是否初始化场地识别器
         if FIELD_FEATURE_COUNT > 0:
             self.field_recognizer = FieldRecognizer()  # 场地识别器
@@ -89,6 +82,33 @@ class AutoFetch:
         else:
             self.field_recognizer = None
             logger.info("场地识别已禁用，仅收集怪物数据")
+
+    def _init_templates(self):
+        for i in range(16):
+            img = cv2.imread(f"images/process/{i}.png")
+            if img is not None:
+                # 使用最近邻插值缩放模板，速度最快
+                img_resized = cv2.resize(img, (self.MATCH_WIDTH, self.MATCH_HEIGHT * 4), interpolation=cv2.INTER_NEAREST)
+                img_quarter = img_resized[self.MATCH_HEIGHT * 3 :, :]
+                self.processed_template.append(img_quarter)
+            else:
+                self.processed_template.append(None)
+
+    def match_images(self, screenshot):
+        h, w = screenshot.shape[:2]
+        # 裁剪底部 1/4 ROI
+        y_start = int(h * 3 / 4)
+        screenshot_quarter = screenshot[y_start:, :]
+        screenshot_quarter = cv2.resize(screenshot_quarter, (self.MATCH_WIDTH, self.MATCH_HEIGHT), interpolation=cv2.INTER_NEAREST)
+        
+        results = []
+        for idx, template in enumerate(self.processed_template):
+            if template is None:
+                continue
+            res = cv2.matchTemplate(screenshot_quarter, template, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(res)
+            results.append((idx, max_val))
+        return results
 
     def fill_data(self, battle_result, recoginze_results, monster_image, result_image, field_recoginze_result):
         # 获取队列头的图片
@@ -398,16 +418,16 @@ class AutoFetch:
         timestamp = int(time.time())
         self.image_buffer.append((timestamp, screenshot.copy(), []))
 
-        results = match_images(screenshot, process_images)
+        results = self.match_images(screenshot)
         results = sorted(results, key=lambda x: x[1], reverse=True)
-        logger.debug(f"处理图片总用时：{time.time()-timea:.3f}s")
+        # logger.debug(f"处理图片总用时：{time.time()-timea:.3f}s")
         # logger.info("匹配结果：", results[0])
 
         # 状态判断：取匹配度最高的一个
         current_state = GameState.UNKNOWN
         best_idx = -1
         best_idx, best_score = results[0]
-        if best_score > 0.6:
+        if best_score > 0.7:
             if best_idx == 0:
                 current_state = GameState.MAIN_MENU
             elif best_idx == 1:
@@ -424,7 +444,7 @@ class AutoFetch:
                 current_state = GameState.FINISHED
             logger.debug(f"匹配到状态:{current_state}, score:{best_score:.4f}")
         else:
-            logger.debug(f"状态机匹配置信度过低: idx:{best_idx}, score:{best_score:.4f}")
+            # logger.debug(f"状态机匹配置信度过低: idx:{best_idx}, score:{best_score:.4f}")
             pass
 
         # 状态执行
