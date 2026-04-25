@@ -324,14 +324,17 @@ class AutoFetch:
             else:
                 logger.error("识别结果有错误，本轮跳过")
         # 选择预测方法
-        if self.field_recognizer is not None:
-            # 构建包含地形的完整特征向量
-            full_features = self.build_terrain_features(left_counts, right_counts)
-            self.current_prediction = self.cannot_model.get_prediction_with_terrain(full_features)
+        if self.cannot_model.is_model_loaded:
+            if self.field_recognizer is not None:
+                # 构建包含地形的完整特征向量
+                full_features = self.build_terrain_features(left_counts, right_counts)
+                self.current_prediction = self.cannot_model.get_prediction_with_terrain(full_features)
+            else:
+                # 仅使用怪物数据进行预测
+                self.current_prediction = self.cannot_model.get_prediction(left_counts, right_counts)
+            self.update_prediction_callback(self.current_prediction)
         else:
-            # 仅使用怪物数据进行预测
-            self.current_prediction = self.cannot_model.get_prediction(left_counts, right_counts)
-        self.update_prediction_callback(self.current_prediction)
+            logger.warning("模型未加载，无法进行预测")
 
         # 人工审核保存测试用截图
         if intelligent_workers_debug:  # 如果处于debug模式且处于自动模式
@@ -384,7 +387,7 @@ class AutoFetch:
 
         results = match_images(screenshot, process_images)
         results = sorted(results, key=lambda x: x[1], reverse=True)
-        logger.debug(f"处理图片总用时：{time.time()-timea:.3f}s")
+        # logger.debug(f"处理图片总用时：{time.time()-timea:.3f}s")
         # logger.info("匹配结果：", results[0])
         for idx, score in results:
             if score > 0.5:
@@ -438,7 +441,8 @@ class AutoFetch:
                     self.battle_result(screenshot)
                     time.sleep(5)
                 elif idx in [6, 7, 14]:
-                    logger.info("等待战斗结束")
+                    pass # 等待结算界面，暂不点击，等识别到结算界面后再点击下一轮按钮
+                    # logger.info("等待战斗结束")
                 elif idx in [12, 13]:  # 返回主页
                     self.adb_connector.click(relative_points[0])
                     logger.info("返回主页")

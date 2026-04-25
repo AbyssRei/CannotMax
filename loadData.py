@@ -133,7 +133,7 @@ class AdbConnector:
             img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             if img is None:
                 raise ValueError("无法解码图像数据")
-            logger.debug(f"获取图片用时{time.time()-ta:.3f}s")
+            # logger.debug(f"获取图片用时{time.time()-ta:.3f}s")
             return img
         except subprocess.CalledProcessError as e:
             logger.exception(f"Screenshot capture failed: {e}")
@@ -199,7 +199,7 @@ class AdbConnector:
         except Exception as e:
             logger.exception("Image processing error:", e)
             return None
-        logger.debug(f"获取图片用时{time.time()-ta:.3f}s")
+        # logger.debug(f"获取图片用时{time.time()-ta:.3f}s")
         return image
 
     def click(self, point):
