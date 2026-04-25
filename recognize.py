@@ -214,10 +214,16 @@ class RecognizeMonster:
     ):
         """处理主区域中的所有区域（优化特征匹配）
         Args:
-            main_roi: 主要感兴趣区域的坐标
-            screenshot: 可选的预先捕获的截图
+            image_adb: 可选的ADB捕获的完整截图
+            matched_threshold: 模板匹配置信度阈值
+            ocr_threshold: OCR识别置信度阈值
         Returns:
-            区域处理结果的列表
+            list[dict]: 区域处理结果的列表。每个字典包含：
+                - region_id (int): 区域索引
+                - matched_id (int): 匹配到的怪物ID (0表示未匹配)
+                - number (str): 识别出的数量 ("N/A"表示无)
+                - confidence (float, optional): 匹配置信度
+                - error (str, optional): 如果处理出错，包含错误信息
         """
         results = []
         (x1, y1), (x2, y2) = self.main_roi

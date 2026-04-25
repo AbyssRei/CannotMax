@@ -167,15 +167,16 @@ class AutoFetch:
             #     logger.info(f"保存1秒前的图片到 {image_path}")
 
             # 新增保存结果图片逻辑
-            # if self.image_name:
-            #     result_image_name = self.image_name.replace(".png", "_result.png")
-            #     # 缩放到128像素高度
-            #     (h, w) = result_image.shape[:2]
-            #     new_height = 128
-            #     resized_image = cv2.resize(result_image, (int(w * (new_height / h)), new_height))
-            #     image_path = self.data_folder / "images" / result_image_name
-            #     cv2.imwrite(str(image_path), resized_image)
-            #     logger.info(f"保存结果图片到 {image_path}")
+            if self.image_name:
+                result_image_name = image_name + "_result.jpg"
+                # 缩放到128像素高度
+                (h, w) = result_image.shape[:2]
+                new_height = 128
+                resized_image = cv2.resize(result_image, (int(w * (new_height / h)), new_height))
+                image_path = self.data_folder / "images" / result_image_name
+                cv2.imwrite(str(image_path), resized_image)
+                logger.info(f"保存结果图片到 {image_path}")
+
         with open(self.data_folder / "arknights.csv", "a", newline="") as file:
             writer = csv.writer(file)
             writer.writerow(data_row)
@@ -251,22 +252,27 @@ class AutoFetch:
         y2 = int(0.9491 * self.adb_connector.screen_height)
         # 截取指定区域
         roi = screenshot[y1:y2, x1:x2]
+        current_image = cv2.resize(
+            roi, (roi.shape[1] // 2, roi.shape[0] // 2)
+        )  # 保存缩放后的图片到内存
+        return current_image, self.get_image_name(results)
+
+    @staticmethod
+    def get_image_name(results):
         # 处理结果
-        processed_monster_ids = []  # 用于存储处理的怪物 ID
+        processed_monsters = []  # 用于存储处理的怪物 IDx数量
         for res in results:
             if "error" not in res:
                 matched_id = res["matched_id"]
                 if matched_id != 0:
-                    processed_monster_ids.append(matched_id)  # 记录处理的怪物 ID
+                    number = res.get("number", 1)
+                    processed_monsters.append(f"{matched_id}x{number}")
         # 生成唯一的文件名（使用时间戳）
         timestamp = int(time.time())
-        # 将处理的怪物 ID 拼接到文件名中
-        monster_ids_str = "_".join(map(str, processed_monster_ids))
-        current_image_name = f"{timestamp}_{monster_ids_str}"
-        current_image = cv2.resize(
-            roi, (roi.shape[1] // 2, roi.shape[0] // 2)
-        )  # 保存缩放后的图片到内存
-        return current_image, current_image_name
+        # 将处理的怪物信息拼接到文件名中，格式为 IDx数量
+        monsters_str = "_".join(processed_monsters)
+        image_name = f"{timestamp}_{monsters_str}"
+        return image_name
 
     def save_statistics_to_log(self):
         elapsed_time = time.time() - self.start_time if self.start_time else 0
@@ -338,10 +344,9 @@ class AutoFetch:
 
         # 人工审核保存测试用截图
         if intelligent_workers_debug:  # 如果处于debug模式且处于自动模式
-            self.image, self.image_name = self.save_recoginze_image(
-                self.recognize_results, screenshot
-            )
+            # self.image, self.image_name = self.save_recoginze_image(self.recognize_results, screenshot)
             # ==============暂时保存图片全部================
+            self.image_name = self.get_image_name(self.recognize_results)
             self.image=screenshot
 
     def battle_result(self, screenshot):
@@ -488,9 +493,9 @@ class AutoFetch:
                     
                     # 按照data_cleaning_with_field_recognize_gpu.py的格式创建表头
                     header = [f"{i+1}L" for i in range(MONSTER_COUNT)]  # 1L-77L
-                    header += [f"{i+1}L" for i in range(MONSTER_COUNT, MONSTER_COUNT + num_field_features)]  # 78L-83L (场地特征)
+                    header += [f"{i+1}LF" for i in range(MONSTER_COUNT, MONSTER_COUNT + num_field_features)]  # 78LF-83LF (场地特征)
                     header += [f"{i+1}R" for i in range(MONSTER_COUNT)]  # 1R-77R 
-                    header += [f"{i+1}R" for i in range(MONSTER_COUNT, MONSTER_COUNT + num_field_features)]  # 78R-83R (场地特征)
+                    header += [f"{i+1}RF" for i in range(MONSTER_COUNT, MONSTER_COUNT + num_field_features)]  # 78RF-83RF (场地特征)
                     header += ["Result", "ImgPath"]
                     logger.info(f"创建包含场地特征的CSV表头，场地特征数: {num_field_features}")
                 else:
