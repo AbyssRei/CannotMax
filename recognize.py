@@ -446,8 +446,8 @@ def load_ref_images(ref_dir="images"):
             int(img.shape[1] * 0.18) : int(img.shape[1] * 0.82),  # 宽度与高度一致
         ]
         # 调整参考图像大小以匹配目标图像
-        ref_resized = cv2.resize(img, (80, 80))
-        ref_resized = ref_resized[0:70, :]
+        ref_resized = cv2.resize(img, (75, 75))
+        ref_resized = ref_resized[0:65, :]
 
         if intelligent_workers_debug:  # 如果处于debug模式
             # 存储模板图像用于debug
