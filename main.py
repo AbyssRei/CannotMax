@@ -125,6 +125,13 @@ class ArknightsApp(QMainWindow):
 
         self.init_ui()
 
+        # 如果模型未加载，显示提示并禁用预测相关按钮
+        if not self.cannot_model.is_model_loaded:
+            self.recognize_button.setEnabled(False)
+            self.recognize_button.setToolTip("模型未加载，无法使用此功能")
+            self.input_panel.predict_button.setEnabled(False)
+            self.input_panel.predict_button.setToolTip("模型未加载，无法使用此功能")
+
     def init_ui(self):
         try:
             with open("pyproject.toml", "r", encoding="utf-8") as f:

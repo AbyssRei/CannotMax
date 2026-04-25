@@ -12,8 +12,10 @@ class CannotModel:
     def __init__(self,model_path = "models/best_model_full.onnx"):
         self.session = None  # ONNX Runtime 会话
         self.model_path = model_path
+        self.is_model_loaded = False
         try:
             self.load_model()  # 初始化时加载模型
+            self.is_model_loaded = True
         except Exception as e:
             logger.error(f"模型加载失败: {e}")
             self.session = None

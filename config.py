@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 定义全局变量
-MONSTER_COUNT = 61  # 设置怪物数量
+MONSTER_COUNT = 70  # 设置怪物数量
 
 # 全局地形特征数量常量
 FIELD_FEATURE_COUNT = 12  # 默认值
@@ -37,7 +37,7 @@ def load_images() -> dict[str, np.ndarray]:
 MONSTER_IMAGES = load_images()
 
 def load_monster_data():
-    monster_data = pd.read_csv('monster.csv', index_col="id", encoding='utf-8-sig')
+    monster_data = pd.read_csv('monster_greenvine.csv', index_col="id", encoding='utf-8-sig')
     return monster_data
 
 MONSTER_DATA = load_monster_data()

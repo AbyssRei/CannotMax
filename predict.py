@@ -32,10 +32,11 @@ def get_device(prefer_gpu=True):
 class CannotModel:
     def __init__(self, model_path="models"):
         self.device = get_device()
+        self.is_model_loaded = False
         self.model_path = self._resolve_model_path(model_path)
-        self.model = None  # 模型实例
         try:
             self.load_model()  # 初始化时加载模型
+            self.is_model_loaded = True
         except Exception as e:
             logger.error(f"模型加载失败: {e}")
             self.model = None
@@ -50,7 +51,7 @@ class CannotModel:
             model_dir = Path(path)
             models = [f for f in model_dir.iterdir() if f.suffix == ".pth" and f.is_file()]
             if not models:
-                raise FileNotFoundError(f"No model files (.pth) found in {path}")
+                logger.error(f"No model files (.pth) found in {path}")
 
             latest_model_path = None
             latest_time = None
@@ -77,7 +78,7 @@ class CannotModel:
                 logger.info(f"Found latest model: {latest_model_path}")
                 return str(latest_model_path)
             else:
-                raise FileNotFoundError(
+                logger.error(
                     f"No models with the expected name format found in {path}"
                 )
 
