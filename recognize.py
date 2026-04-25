@@ -5,7 +5,7 @@ import numpy as np
 from PIL import ImageGrab
 from rapidocr import RapidOCR, EngineType
 
-from config import MONSTER_DATA, MONSTER_IMAGES
+from config import MONSTER_DATA, MONSTER_IMAGES, MONSTER_COUNT
 import find_monster_zone
 from winrt_capture import WinRTScreenCapture
 
@@ -14,9 +14,6 @@ logger.setLevel(logging.INFO)
 
 # 是否启用debug模式
 intelligent_workers_debug = True
-
-# 定义全局变量
-MONSTER_COUNT = 61  # 设置怪物数量
 
 # 数字区域相对坐标
 relative_regions_nums = [
