@@ -15,7 +15,7 @@ def load_images() -> dict[str, np.ndarray]:
     returns: dict - 图片字典，键为文件名(不含扩展名)，值为numpy.ndarray对象
     """
     images = {}
-    images_path = Path(__file__).parent / 'images'
+    images_path = Path('images')
     # 遍历images目录下的所有文件
     for image_file in images_path.glob('*.*'):
         if image_file.suffix.lower() in ('.png', '.jpg', '.jpeg', '.bmp'):

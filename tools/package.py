@@ -15,6 +15,7 @@ CONFIG = {
     "add_data": [                        # 需要打包的附加数据
         (r".venv/Lib/site-packages/rapidocr/default_models.yaml", "rapidocr"),
         (r".venv/Lib/site-packages/rapidocr/config.yaml", "rapidocr"),
+        (r".venv/Lib/site-packages/rapidocr/models", "rapidocr/models"),
         # (r".venv/Lib/site-packages/onnxruntime", "onnxruntime"),
     ],
     "copy_files": [                      # 需要复制的额外文件/目录
@@ -22,12 +23,13 @@ CONFIG = {
         r"C:\Windows\System32\vcruntime140.dll",
         r"C:\Windows\System32\vcruntime140_1.dll",
         # "arknights.csv",
-        "models/best_model_full.onnx",
+        # "models/best_model_full.onnx",
         "images",
         "platform-tools",
         "ico",
         "pyproject.toml",
         "monster.csv",
+        "monster_greenvine.csv",
     ]
 }
 

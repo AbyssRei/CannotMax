@@ -34,7 +34,7 @@ relative_regions = [
     (0.8800, 0.1, 1.0000, 0.77),
 ]
 
-def get_rapidocr_engine(prefer_gpu=True):
+def get_rapidocr_engine(prefer_gpu=False):
     """
     prefer_gpu (bool): 是否优先尝试使用GPU
     """
@@ -440,13 +440,18 @@ def load_ref_images(ref_dir="images"):
             img = MONSTER_IMAGES.get("empty")
         else:
             img = MONSTER_IMAGES.get(MONSTER_DATA["原始名称"][i])
+        
+        if img is None:
+            logger.error(f"无法加载参考图片 i={i}, 名称={MONSTER_DATA['原始名称'][i] if i > 0 else 'empty'}")
+            continue
+
         # 裁切模板匹配图像比例
-        img = img[
+        img_crop = img[
             int(img.shape[0] * 0.16) : int(img.shape[0] * 0.80),  # 高度取靠上部分
             int(img.shape[1] * 0.18) : int(img.shape[1] * 0.82),  # 宽度与高度一致
         ]
         # 调整参考图像大小以匹配目标图像
-        ref_resized = cv2.resize(img, (75, 75))
+        ref_resized = cv2.resize(img_crop, (75, 75))
         ref_resized = ref_resized[0:65, :]
 
         if intelligent_workers_debug:  # 如果处于debug模式
@@ -455,8 +460,7 @@ def load_ref_images(ref_dir="images"):
                 os.makedirs("images/tmp")
             cv2.imwrite(f"images/tmp/xref_{i}.png", ref_resized)
 
-        if img is not None:
-            ref_images[i] = ref_resized
+        ref_images[i] = ref_resized
     return ref_images
 
 

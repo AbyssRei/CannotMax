@@ -13,7 +13,8 @@ from recognize import intelligent_workers_debug, RecognizeMonster
 from config import MONSTER_COUNT, FIELD_FEATURE_COUNT
 from collections.abc import Callable
 from collections import deque
-from field_recognition import FieldRecognizer
+if FIELD_FEATURE_COUNT > 0:
+    from field_recognition import FieldRecognizer
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
