@@ -1,11 +1,9 @@
 import json
 from collections import defaultdict
-import math
 import numpy as np
 import pandas as pd
 from scipy.stats import fisher_exact
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 # 配置中文字体
 plt.rcParams['font.sans-serif'] = ['Microsoft YaHei']

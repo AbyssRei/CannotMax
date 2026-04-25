@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 全局地形特征数量常量
-FIELD_FEATURE_COUNT = 12  # 默认值
+FIELD_FEATURE_COUNT = 0  # 默认值
 
 def load_images() -> dict[str, np.ndarray]:
     """
