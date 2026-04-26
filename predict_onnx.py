@@ -80,10 +80,17 @@ class CannotModel:
                 arr = arr[np.newaxis, :]  # shape: (1, 56)
             return arr
         
-        # 添加批次维度
+        # 处理符号和绝对值，以匹配导出的模型输入
+        left_signs_arr = np.sign(left_counts).astype(np.int64)
+        left_counts_arr = np.abs(left_counts).astype(np.int64)
+        right_signs_arr = np.sign(right_counts).astype(np.int64)
+        right_counts_arr = np.abs(right_counts).astype(np.int64)
+
         inputs = {
-            "left_counts": validate_input(left_counts).astype(np.int64),
-            "right_counts": validate_input(right_counts).astype(np.int64)
+            "left_signs": validate_input(left_signs_arr),
+            "left_counts": validate_input(left_counts_arr),
+            "right_signs": validate_input(right_signs_arr),
+            "right_counts": validate_input(right_counts_arr)
         }
         
         # 执行推理
@@ -92,8 +99,8 @@ class CannotModel:
                 output_names=["output"],
                 input_feed=inputs
             )
-            print(output)
-            prediction = output[0]
+            # output 是一个列表，output[0] 是形状为 (batch_size, 1) 的数组
+            prediction = output[0].flatten()[0]
         except Exception as e:
             raise RuntimeError(f"推理失败: {str(e)}")
         
@@ -124,10 +131,52 @@ class CannotModel:
         left_terrain = full_features[MONSTER_COUNT:MONSTER_COUNT+FIELD_FEATURE_COUNT]  # 78L-83L
         right_monsters = full_features[MONSTER_COUNT+FIELD_FEATURE_COUNT:MONSTER_COUNT*2+FIELD_FEATURE_COUNT]  # 1R-77R
         right_terrain = full_features[MONSTER_COUNT*2+FIELD_FEATURE_COUNT:MONSTER_COUNT*2+FIELD_FEATURE_COUNT*2]  # 78R-83R
-        
-        # 合并怪物特征和地形特征（按照训练时的格式）
-        left_counts = np.concatenate([left_monsters, left_terrain])
-        right_counts = np.concatenate([right_monsters, right_terrain])
 
-        # 使用合并后的特征进行预测
-        return self.get_prediction(left_counts, right_counts)
+        # 处理左侧特征
+        left_monster_signs = np.sign(left_monsters).astype(np.int64)
+        left_terrain_signs = np.ones_like(left_terrain).astype(np.int64)
+        left_signs = np.concatenate([left_monster_signs, left_terrain_signs])
+
+        left_monster_counts = np.abs(left_monsters).astype(np.int64)
+        left_counts = np.concatenate([left_monster_counts, left_terrain.astype(np.int64)])
+
+        # 处理右侧特征
+        right_monster_signs = np.sign(right_monsters).astype(np.int64)
+        right_terrain_signs = np.ones_like(right_terrain).astype(np.int64)
+        right_signs = np.concatenate([right_monster_signs, right_terrain_signs])
+
+        right_monster_counts = np.abs(right_monsters).astype(np.int64)
+        right_counts = np.concatenate([right_monster_counts, right_terrain.astype(np.int64)])
+
+        def validate_input(arr):
+            """验证并转换输入数据"""
+            arr = arr.astype(np.int64)
+            if arr.ndim == 1:
+                arr = arr[np.newaxis, :]
+            return arr
+
+        inputs = {
+            "left_signs": validate_input(left_signs),
+            "left_counts": validate_input(left_counts),
+            "right_signs": validate_input(right_signs),
+            "right_counts": validate_input(right_counts)
+        }
+
+        # 执行推理
+        try:
+            output = self.session.run(
+                output_names=["output"],
+                input_feed=inputs
+            )
+            # output[0] 是形状为 (batch_size, 1) 的数组
+            prediction = output[0].flatten()[0]
+        except Exception as e:
+            raise RuntimeError(f"推理失败: {str(e)}")
+
+        # 后处理（与原逻辑一致）
+        if np.isnan(prediction) or np.isinf(prediction):
+            logger.warning("警告: 预测结果包含NaN或Inf，返回默认值0.5")
+            prediction = 0.5
+
+        prediction = np.clip(prediction, 0.0, 1.0)
+        return float(prediction)
