@@ -57,9 +57,8 @@ def get_rapidocr_engine(prefer_gpu=False):
     return RapidOCR()
 
 class RecognizeMonster:
-    ROI_RELATIVE = [(0.2464, 0.8410), (0.7542, 0.9510)]
+    ROI_RELATIVE = [(0.2464, 0.8410), (0.7542, 0.9510)] # 16:9下怪物区域相对坐标
     def __init__(self, window_name: str | None = None, monitor_index: int | None = None):
-        self.roi_relative = self.ROI_RELATIVE # 16:9下怪物区域相对坐标
         self.main_roi = [(0, 0), (1919, 1079)] # 主区域坐标
         # 鼠标交互全局变量
         self.roi_box = []
@@ -210,7 +209,7 @@ class RecognizeMonster:
     def process_regions(
         self,
         image_adb: cv2.typing.MatLike | None = None,
-        matched_threshold=0.1,
+        matched_threshold=0.5,
         ocr_threshold=0.95,
     ):
         """处理主区域中的所有区域（优化特征匹配）
@@ -235,10 +234,10 @@ class RecognizeMonster:
             screenshot = self.get_manual_screenshot()
         else:
             logger.info("使用ADB图像")
-            x1 = int(self.roi_relative[0][0] * image_adb.shape[1])
-            y1 = int(self.roi_relative[0][1] * image_adb.shape[0])
-            x2 = int(self.roi_relative[1][0] * image_adb.shape[1])
-            y2 = int(self.roi_relative[1][1] * image_adb.shape[0])
+            x1 = int(self.ROI_RELATIVE[0][0] * image_adb.shape[1])
+            y1 = int(self.ROI_RELATIVE[0][1] * image_adb.shape[0])
+            x2 = int(self.ROI_RELATIVE[1][0] * image_adb.shape[1])
+            y2 = int(self.ROI_RELATIVE[1][1] * image_adb.shape[0])
             screenshot = image_adb[y1:y2, x1:x2]
 
         # 确保图像不为空
@@ -461,8 +460,7 @@ def load_ref_images(ref_dir="images"):
                 os.makedirs("images/tmp")
             cv2.imwrite(f"images/tmp/xref_{i}.png", ref_resized)
 
-        if img is not None:
-            ref_images[i] = ref_resized
+        ref_images[i] = ref_resized
     return ref_images
 
 
