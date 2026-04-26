@@ -26,12 +26,12 @@ relative_regions_nums = [
 ]
 # 怪物头像相对坐标
 relative_regions = [
-    (0.0000, 0.1, 0.1200, 0.77),
-    (0.1200, 0.1, 0.2400, 0.77),
-    (0.2400, 0.1, 0.3600, 0.77),
-    (0.6400, 0.1, 0.7600, 0.77),
-    (0.7600, 0.1, 0.8800, 0.77),
-    (0.8800, 0.1, 1.0000, 0.77),
+    (0.0000, 0.1, 0.1240, 0.77),
+    (0.1240, 0.1, 0.2480, 0.77),
+    (0.2480, 0.1, 0.3720, 0.77),
+    (0.6280, 0.1, 0.7520, 0.77),
+    (0.7520, 0.1, 0.8760, 0.77),
+    (0.8760, 0.1, 1.0000, 0.77),
 ]
 
 def get_rapidocr_engine(prefer_gpu=False):
@@ -209,7 +209,7 @@ class RecognizeMonster:
     def process_regions(
         self,
         image_adb: cv2.typing.MatLike | None = None,
-        matched_threshold=0.5,
+        matched_threshold=0.4,
         ocr_threshold=0.95,
     ):
         """处理主区域中的所有区域（优化特征匹配）
