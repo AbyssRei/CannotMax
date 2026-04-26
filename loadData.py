@@ -4,7 +4,10 @@ import cv2
 import numpy as np
 import logging
 import gzip
-
+import win32gui
+import win32api
+import win32con
+from winrt_capture import WinRTScreenCapture
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -225,6 +228,140 @@ class AdbConnector:
         logger.info(f"点击坐标: ({x_coord}, {y_coord})")
         click_cmd = f"{self.adb_path} -s {self.device_serial} shell input tap {x_coord} {y_coord}"
         subprocess.run(click_cmd, shell=True)
+
+
+class PcConnector:
+    def __init__(self):
+        self.window_name = "明日方舟"
+        self.hwnd = None
+        self.screen_width = 0
+        self.screen_height = 0
+        self.capture = None
+        self.is_connected = False
+
+    def connect(self):
+        hwnd = win32gui.FindWindow(None, self.window_name)
+        if hwnd:
+            self.hwnd = hwnd
+            rect = win32gui.GetClientRect(self.hwnd)
+            self.screen_width = rect[2] - rect[0]
+            self.screen_height = rect[3] - rect[1]
+            self.capture = WinRTScreenCapture(window_name=self.window_name)
+            self.capture.start()
+            self.is_connected = True
+            logger.info(f"成功连接到PC端窗口: {self.window_name}, 分辨率: {self.screen_width}x{self.screen_height}")
+        else:
+            logger.warning(f"未找到PC端窗口: {self.window_name}")
+            self.is_connected = False
+
+    def capture_screenshot(self):
+        if not self.is_connected or not self.capture:
+            return None
+        frame = self.capture.snapshot()
+        return frame
+
+    def click(self, point):
+        if not self.hwnd:
+            return
+        
+        try:
+            # PC端点击需要重新获取一次ClientRect以防窗口大小改变
+            rect = win32gui.GetClientRect(self.hwnd)
+            self.screen_width = rect[2] - rect[0]
+            self.screen_height = rect[3] - rect[1]
+
+            x, y = point
+            x_coord = int(x * self.screen_width)
+            y_coord = int(y * self.screen_height)
+            
+            client_left, client_top = win32gui.ClientToScreen(self.hwnd, (0, 0))
+            screen_x = client_left + x_coord
+            screen_y = client_top + y_coord
+            
+            logger.info(f"PC端点击坐标: 窗口内({x_coord}, {y_coord}) -> 屏幕({screen_x}, {screen_y})")
+
+            # 尝试将窗口置于前台，忽略可能的错误
+            try:
+                foreground_hwnd = win32gui.GetForegroundWindow()
+                if foreground_hwnd != self.hwnd:
+                    win32gui.ShowWindow(self.hwnd, win32con.SW_RESTORE)
+                    win32gui.SetForegroundWindow(self.hwnd)
+                    time.sleep(0.1)
+            except Exception as e:
+                logger.debug(f"置于前台失败，可能已经是前台或被阻止: {e}")
+
+            # 使用底层 SendInput 模拟鼠标事件，支持多显示器 (VIRTUALDESK) 并且不会在权限不足时抛出异常
+            import ctypes
+            
+            PUL = ctypes.POINTER(ctypes.c_ulong)
+            class KeyBdInput(ctypes.Structure):
+                _fields_ = [("wVk", ctypes.c_ushort), ("wScan", ctypes.c_ushort), ("dwFlags", ctypes.c_ulong), ("time", ctypes.c_ulong), ("dwExtraInfo", PUL)]
+            class HardwareInput(ctypes.Structure):
+                _fields_ = [("uMsg", ctypes.c_ulong), ("wParamL", ctypes.c_short), ("wParamH", ctypes.c_ushort)]
+            class MouseInput(ctypes.Structure):
+                _fields_ = [("dx", ctypes.c_long), ("dy", ctypes.c_long), ("mouseData", ctypes.c_ulong), ("dwFlags", ctypes.c_ulong), ("time", ctypes.c_ulong), ("dwExtraInfo", PUL)]
+            class Input_I(ctypes.Union):
+                _fields_ = [("ki", KeyBdInput), ("mi", MouseInput), ("hi", HardwareInput)]
+            class Input(ctypes.Structure):
+                _fields_ = [("type", ctypes.c_ulong), ("ii", Input_I)]
+
+            SM_XVIRTUALSCREEN = 76
+            SM_YVIRTUALSCREEN = 77
+            SM_CXVIRTUALSCREEN = 78
+            SM_CYVIRTUALSCREEN = 79
+            
+            vscreen_x = ctypes.windll.user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
+            vscreen_y = ctypes.windll.user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+            vscreen_w = ctypes.windll.user32.GetSystemMetrics(SM_CXVIRTUALSCREEN)
+            vscreen_h = ctypes.windll.user32.GetSystemMetrics(SM_CYVIRTUALSCREEN)
+
+            if vscreen_w == 0 or vscreen_h == 0:
+                vscreen_w = 1920
+                vscreen_h = 1080
+
+            # 转换为 0-65535 虚拟桌面绝对坐标
+            dx = int((screen_x - vscreen_x) * 65535 / vscreen_w)
+            dy = int((screen_y - vscreen_y) * 65535 / vscreen_h)
+
+            MOUSEEVENTF_MOVE = 0x0001
+            MOUSEEVENTF_ABSOLUTE = 0x8000
+            MOUSEEVENTF_VIRTUALDESK = 0x4000
+            MOUSEEVENTF_LEFTDOWN = 0x0002
+            MOUSEEVENTF_LEFTUP = 0x0004
+
+            extra = ctypes.c_ulong(0)
+            ii_ = Input_I()
+            
+            # 移动鼠标
+            ii_.mi = MouseInput(dx, dy, 0, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, 0, ctypes.pointer(extra))
+            cmd = Input(ctypes.c_ulong(0), ii_)
+            ctypes.windll.user32.SendInput(1, ctypes.pointer(cmd), ctypes.sizeof(cmd))
+            
+            time.sleep(0.05)
+            
+            # 按下左键
+            ii_.mi = MouseInput(dx, dy, 0, MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, 0, ctypes.pointer(extra))
+            cmd = Input(ctypes.c_ulong(0), ii_)
+            ctypes.windll.user32.SendInput(1, ctypes.pointer(cmd), ctypes.sizeof(cmd))
+            
+            time.sleep(0.05)
+            
+            # 抬起左键
+            ii_.mi = MouseInput(dx, dy, 0, MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, 0, ctypes.pointer(extra))
+            cmd = Input(ctypes.c_ulong(0), ii_)
+            ctypes.windll.user32.SendInput(1, ctypes.pointer(cmd), ctypes.sizeof(cmd))
+
+        except Exception as e:
+            logger.exception(f"PC端点击出错: {e}")
+
+    def get_device_list(self):
+        hwnd = win32gui.FindWindow(None, self.window_name)
+        if hwnd:
+            return [f"PC: {self.window_name}"]
+        return []
+
+    def update_device_serial(self, serial):
+        pass
 
 
 relative_points = [

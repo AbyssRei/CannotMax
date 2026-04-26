@@ -39,7 +39,7 @@ class GameState(Enum):
 class AutoFetch:
     def __init__(
         self,
-        adb_connector: loadData.AdbConnector,
+        connector,
         game_mode,
         is_invest,
         update_prediction_callback: Callable[[float], None],
@@ -49,7 +49,7 @@ class AutoFetch:
         stop_callback: Callable[[], None],
         training_duration,
     ):
-        self.adb_connector = adb_connector
+        self.connector = connector
         self.game_mode = game_mode  # 游戏模式（30人或自娱自乐）
         self.is_invest = is_invest  # 是否投资
         self.current_prediction = 0.5  # 当前预测结果，初始值为0.5
@@ -121,7 +121,7 @@ class AutoFetch:
             previous_image = None
 
         if previous_image is None:
-            logger.error("未找到1秒前的图片，无法保存")
+            logger.error("未找到2秒前的图片，无法保存")
             return
 
         image_name = self.get_image_name(recoginze_results, battle_result)  # 生成图片名称
@@ -176,14 +176,14 @@ class AutoFetch:
                     field_data_values.append(field_recoginze_result[col])
                 else:
                     field_data_values.append(0)  # 默认值
-            
+
             # 记录场地特征到日志
             field_summary = []
             for i, col in enumerate(field_feature_columns):
                 value = field_data_values[i]
                 field_summary.append(f"{col}={value}")
             logger.info(f"当次场地特征: {', '.join(field_summary)}")
-            
+
             # 按照data_cleaning_with_field_recognize_gpu.py的格式组织数据
             data_row.extend(left_monster_data.tolist())  # 1L-77L
             data_row.extend(field_data_values)  # 78L-83L (场地特征L)
@@ -256,9 +256,21 @@ class AutoFetch:
 
         height, width, _ = image.shape
 
-        # 获取左上角和右上角颜色
-        left_top = image[0, 0]
-        right_top = image[0, width - 1]  # 右上角坐标为(width-1, 0)
+        # 避开边缘（如PC端的标题栏或黑边），向内偏移 5% 并取一个 10x10 的区域计算平均颜色
+        y_offset = int(height * 0.05)
+        x_offset = int(width * 0.05)
+        
+        # 确保区域不会越界
+        y_end = min(y_offset + 10, height)
+        x_left_end = min(x_offset + 10, width)
+        x_right_start = max(width - x_offset - 10, 0)
+        x_right_end = max(width - x_offset, 1)
+
+        left_region = image[y_offset:y_end, x_offset:x_left_end]
+        right_region = image[y_offset:y_end, x_right_start:x_right_end]
+
+        left_top = left_region.mean(axis=(0, 1))
+        right_top = right_region.mean(axis=(0, 1))
 
         # 计算饱和度
         sat_left = get_saturation(left_top)
@@ -280,10 +292,10 @@ class AutoFetch:
         裁切复核图片
         """
         roi_rel = RecognizeMonster.ROI_RELATIVE
-        x1 = int(roi_rel[0][0] * self.adb_connector.screen_width)
-        y1 = int(roi_rel[0][1] * self.adb_connector.screen_height)
-        x2 = int(roi_rel[1][0] * self.adb_connector.screen_width)
-        y2 = int(roi_rel[1][1] * self.adb_connector.screen_height)
+        x1 = int(roi_rel[0][0] * self.connector.screen_width)
+        y1 = int(roi_rel[0][1] * self.connector.screen_height)
+        x2 = int(roi_rel[1][0] * self.connector.screen_width)
+        y2 = int(roi_rel[1][1] * self.connector.screen_height)
         # 截取指定区域
         roi = screenshot[y1:y2, x1:x2]
         current_image = cv2.resize(
@@ -322,7 +334,7 @@ class AutoFetch:
 
     def recognize_and_predict(self, screenshot = None):
         if screenshot is None:
-            screenshot = self.adb_connector.capture_screenshot()
+            screenshot = self.connector.capture_screenshot()
         self.recognize_results = self.recognizer.process_regions(screenshot)
         
         # 场地识别
@@ -412,7 +424,7 @@ class AutoFetch:
             (0.4979, 0.6324),  # 本轮观望
         ]
         timea = time.time()
-        screenshot = self.adb_connector.capture_screenshot()
+        screenshot = self.connector.capture_screenshot()
         if screenshot is None:
             logger.error("截图失败，无法继续操作")
             return
@@ -456,28 +468,28 @@ class AutoFetch:
         match current_state:
             case GameState.MAIN_MENU:
                 # 活动主界面状态，点击加入赛事跳转到选择模式界面（未选择）状态
-                self.adb_connector.click(relative_points[0])
+                self.connector.click(relative_points[0])
                 logger.info("加入赛事")
             case GameState.MODE_SELECTION_UNSELECTED:
                 # 选择模式界面（未选择），点击模式跳转到已选择
                 if self.game_mode == "30人":
-                    self.adb_connector.click(relative_points[1])
+                    self.connector.click(relative_points[1])
                     logger.info("竞猜对决30人")
                     time.sleep(2)
-                    self.adb_connector.click(relative_points[0])
+                    self.connector.click(relative_points[0])
                     logger.info("开始游戏")
                 else:
-                    self.adb_connector.click(relative_points[2])
+                    self.connector.click(relative_points[2])
                     logger.info("自娱自乐")
             case GameState.MODE_SELECTION_SELECTED:
                 # 选择模式界面（已选择），点击开始游戏跳转到怪物数量界面状态
-                self.adb_connector.click(relative_points[0])
+                self.connector.click(relative_points[0])
                 logger.info("开始游戏")
             case GameState.PRE_BATTLE:
                 # 怪物数量界面状态，识别并开始游戏，跳转到等待结算状态
                 time.sleep(1)
                 # 识别怪物类型数量和地形
-                screenshot = self.adb_connector.capture_screenshot()
+                screenshot = self.connector.capture_screenshot()
                 self.recognize_and_predict(screenshot)
 
                 # 点击下一轮
@@ -485,22 +497,22 @@ class AutoFetch:
                     # 根据预测结果点击投资左/右
                     if self.current_prediction > 0.5:
                         if best_idx == 4:
-                            self.adb_connector.click(relative_points[0])
+                            self.connector.click(relative_points[0])
                         else:
-                            self.adb_connector.click(relative_points[2])
+                            self.connector.click(relative_points[2])
                         logger.info("投资右")
                         time.sleep(3)
                     else:
                         if best_idx == 4:
-                            self.adb_connector.click(relative_points[1])
+                            self.connector.click(relative_points[1])
                         else:
-                            self.adb_connector.click(relative_points[3])
+                            self.connector.click(relative_points[3])
                         logger.info("投资左")
                         time.sleep(3)
                     if self.game_mode == "30人":
                         time.sleep(20)  # 30人模式下，投资后需要等待20秒
                 else:  # 不投资
-                    self.adb_connector.click(relative_points[4])
+                    self.connector.click(relative_points[4])
                     logger.info("本轮观望")
                     time.sleep(3)
             case GameState.IN_BATTLE:
@@ -513,7 +525,7 @@ class AutoFetch:
                 time.sleep(5)
             case GameState.FINISHED:
                 # 结束状态，所有轮次结束界面，返回主页并跳转到活动主界面状态
-                self.adb_connector.click(relative_points[0])
+                self.connector.click(relative_points[0])
                 logger.info("返回主页")
             case _:
                 # 未匹配到有效界面，保持状态
@@ -599,4 +611,3 @@ class AutoFetch:
             logging.getLogger().removeHandler(self.log_file_handler)
             self.log_file_handler.close()
         # 结束自动获取数据的线程
-

@@ -90,11 +90,12 @@ class ArknightsApp(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        # 捕获模式：ADB, WIN
+        # 捕获模式：ADB, PC, WIN
         self.current_capture_mode = "ADB"
 
         # 尝试连接模拟器
         self.adb_connector = loadData.AdbConnector()
+        self.pc_connector = loadData.PcConnector()
         self.adb_connector_thread = ADBConnectorThread(self)
         self.adb_connector_thread.connect_finished.connect(self.on_adb_connected)
         self.adb_connector_thread.start()
@@ -339,7 +340,7 @@ class ArknightsApp(QMainWindow):
         self.mode_group.setExclusive(True)
 
         self.adb_mode_btn = QPushButton("安卓端-ADB")
-        self.pc_mode_btn = QPushButton("PC端")
+        self.pc_mode_btn = QPushButton("PC端(UI比例100%)")
         self.win_mode_btn = QPushButton("窗口截取")
 
         mode_btns = [self.adb_mode_btn, self.pc_mode_btn, self.win_mode_btn]
@@ -498,22 +499,20 @@ class ArknightsApp(QMainWindow):
 
         self.size_animation.finished.connect(set_fixed_after_animation)
 
+    @property
+    def active_connector(self):
+        if self.current_capture_mode == "PC":
+            return self.pc_connector
+        return self.adb_connector
+
     def on_mode_changed(self, mode):
         """切换捕获模式"""
-        if mode == "PC":
-            QMessageBox.information(self, "提示", "PC端暂不支持")
-            # 恢复之前的选中状态
-            if self.current_capture_mode == "ADB":
-                self.adb_mode_btn.setChecked(True)
-            else:
-                self.win_mode_btn.setChecked(True)
-            return
-
         self.current_capture_mode = mode
         logger.info(f"切换捕获模式为: {mode}")
 
         is_win_mode = (mode == "WIN")
         is_adb_mode = (mode == "ADB")
+        is_pc_mode = (mode == "PC")
 
         # 切换窗口捕获相关控件
         self.choose_window_button.setEnabled(is_win_mode)
@@ -534,6 +533,12 @@ class ArknightsApp(QMainWindow):
                 self.recognizer = recognize.RecognizeMonster(method="WIN")
             if self.recognizer._winrt is None:
                 self.choose_capture_window()
+        elif mode == "PC":
+            self.recognizer = recognize.RecognizeMonster(method="ADB") # reuse ADB reading methodology but on PC Connector
+            if not self.pc_connector.is_connected:
+                self.pc_connector.connect()
+                if not self.pc_connector.is_connected:
+                    QMessageBox.warning(self, "警告", "未能连接到PC端窗口(明日方舟)。")
 
     def on_adb_connected(self):
         logger.info("模拟器初始化完成")
@@ -766,14 +771,14 @@ class ArknightsApp(QMainWindow):
         根据当前模式获取截图并识别
         """
         screenshot = None
-        if self.current_capture_mode == "ADB":
-            screenshot = self.adb_connector.capture_screenshot()
+        if self.current_capture_mode in ["ADB", "PC"]:
+            screenshot = self.active_connector.capture_screenshot()
             if screenshot is None:
                 # 尝试重新连接一次
-                self.adb_connector.connect()
-                screenshot = self.adb_connector.capture_screenshot()
+                self.active_connector.connect()
+                screenshot = self.active_connector.capture_screenshot()
             if screenshot is None:
-                logger.error("ADB 截图失败")
+                logger.error(f"{self.current_capture_mode} 截图失败")
             
             results = self.recognizer.process_regions(screenshot)
         else:
@@ -839,7 +844,7 @@ class ArknightsApp(QMainWindow):
     def toggle_auto_fetch(self):
         if not (hasattr(self, "auto_fetch") and self.auto_fetch.auto_fetch_running):
             self.auto_fetch = auto_fetch.AutoFetch(
-                self.adb_connector,
+                self.active_connector,
                 self.game_mode,
                 self.is_invest,
                 update_prediction_callback=self.update_prediction_callback,
