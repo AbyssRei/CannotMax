@@ -1,24 +1,18 @@
-import os
 import csv
 import shutil
 import sys
+from pathlib import Path
+import unpackage
 
 # 获取项目根目录
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# 记录当前工作目录，并切换到项目根目录，以便 config.py 能正确加载其资源文件
-original_cwd = os.getcwd()
-os.chdir(project_root)
+base_dir = Path(__file__).resolve().parent
+project_root = base_dir.parent
 
 # 将项目根目录添加到 sys.path 以便导入 config
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
-try:
-    from config import MONSTER_COUNT, FIELD_FEATURE_COUNT
-finally:
-    # 切换回原始工作目录
-    os.chdir(original_cwd)
+from config import MONSTER_COUNT, FIELD_FEATURE_COUNT
 
 def get_expected_header():
     """根据 start_auto_fetch 的逻辑生成预期表头"""
@@ -52,29 +46,34 @@ def read_csv_data(filepath):
     raise ValueError(f"无法以支持的编码读取文件 {filepath}")
 
 def main():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    target_images_dir = os.path.join(base_dir, 'images')
-    target_csv_path = os.path.join(base_dir, 'arknights.csv')
+    target_images_dir = base_dir / 'images'
+    target_csv_path = base_dir / 'arknights.csv'
 
-    os.makedirs(target_images_dir, exist_ok=True)
+    # 清理旧数据
+    if target_images_dir.exists():
+        shutil.rmtree(target_images_dir)
+    target_csv_path.unlink(missing_ok=True)
+
+    target_images_dir.mkdir(parents=True, exist_ok=True)
 
     expected_header = get_expected_header()
+    img_path_idx = expected_header.index("ImgPath")
     merged_data = []
+    seen_img_paths = set()
 
     # 扫描子目录
     scan_dirs = [base_dir]
-    tmp_dir = os.path.join(base_dir, 'tmp')
-    if os.path.exists(tmp_dir) and os.path.isdir(tmp_dir):
+    tmp_dir = base_dir / 'tmp'
+    if tmp_dir.exists() and tmp_dir.is_dir():
         scan_dirs.append(tmp_dir)
 
     for s_dir in scan_dirs:
-        for item in os.listdir(s_dir):
-            sub_dir = os.path.join(s_dir, item)
-            if not os.path.isdir(sub_dir) or item in ['images', 'tmp', 'package', '__pycache__']:
+        for sub_dir in s_dir.iterdir():
+            if not sub_dir.is_dir() or sub_dir.name in ['images', 'tmp', 'package', '__pycache__']:
                 continue
             
-            csv_path = os.path.join(sub_dir, 'arknights.csv')
-            if not os.path.exists(csv_path):
+            csv_path = sub_dir / 'arknights.csv'
+            if not csv_path.exists():
                 continue
 
             try:
@@ -83,22 +82,31 @@ def main():
                     continue
 
                 if current_header != expected_header:
-                    print(f"跳过目录 {sub_dir}: arknights.csv 的表头不符合预期格式")
-                    continue
+                    print(f"目录 {sub_dir.name}: arknights.csv 的表头不符合预期格式 (共 {len(data)} 行)")
                 
                 # 合并图片
-                src_images_dir = os.path.join(sub_dir, 'images')
-                if os.path.exists(src_images_dir) and os.path.isdir(src_images_dir):
-                    for img_file in os.listdir(src_images_dir):
-                        src_img = os.path.join(src_images_dir, img_file)
-                        dst_img = os.path.join(target_images_dir, img_file)
-                        if os.path.isfile(src_img):
-                            shutil.copy2(src_img, dst_img)
+                src_images_dir = sub_dir / 'images'
+                if src_images_dir.exists() and src_images_dir.is_dir():
+                    for src_img in src_images_dir.iterdir():
+                        if src_img.is_file():
+                            dst_img = target_images_dir / src_img.name
+                            shutil.move(str(src_img), str(dst_img))
                 
-                merged_data.extend(data)
-                print(f"成功合并目录: {sub_dir} (编码: {encoding})")
+                # 增加重复检查
+                added_count = 0
+                skip_count = 0
+                for row in data:
+                    img_path = row[img_path_idx]
+                    if img_path not in seen_img_paths:
+                        merged_data.append(row)
+                        seen_img_paths.add(img_path)
+                        added_count += 1
+                    else:
+                        skip_count += 1
+                
+                print(f"成功合并目录: {sub_dir.name} (编码: {encoding}, 新增: {added_count}, 重复跳过: {skip_count})")
             except Exception as e:
-                print(f"处理目录 {sub_dir} 时出错: {e}")
+                print(f"处理目录 {sub_dir.name} 时出错: {e}")
 
     if merged_data:
         with open(target_csv_path, 'w', newline='', encoding='utf-8-sig') as f:
@@ -110,4 +118,5 @@ def main():
         print("\n未找到有效的 CSV 数据。")
 
 if __name__ == '__main__':
+    unpackage.unpackage()  # 解压数据包
     main()

@@ -53,8 +53,8 @@ class CannotModel:
             if not models:
                 logger.error(f"No model files (.pth) found in {path}")
 
-            latest_model_path = None
-            latest_time = None
+            priority = {"loss": 0, "acc": 1, "full": 2}
+            valid_models = []
 
             pattern = re.compile(
                 r"best_model_(acc|loss|full)_data\d+_acc\d+\.\d+_loss\d+\.\d+_(\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2})\.pth$"
@@ -63,18 +63,20 @@ class CannotModel:
             for model_file_path in models:
                 match = pattern.match(model_file_path.name)
                 if match:
+                    model_type = match.group(1)
                     timestamp_str = match.group(2)  # Group 2 captures the timestamp
                     try:
                         model_time = datetime.strptime(
                             timestamp_str, "%Y_%m_%d_%H_%M_%S"
                         )
-                        if latest_time is None or model_time > latest_time:
-                            latest_time = model_time
-                            latest_model_path = model_file_path
+                        valid_models.append((model_time, priority.get(model_type, 3), model_file_path))
                     except ValueError:
                         continue  # Ignore files with malformed timestamps
 
-            if latest_model_path:
+            if valid_models:
+                # Sort by time DESC, then priority ASC (loss=0, acc=1, full=2)
+                valid_models.sort(key=lambda x: (x[0], -x[1]), reverse=True)
+                latest_model_path = valid_models[0][2]
                 logger.info(f"Found latest model: {latest_model_path}")
                 return str(latest_model_path)
             else:
