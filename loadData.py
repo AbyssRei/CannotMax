@@ -28,19 +28,23 @@ class AdbConnector:
     def connect(self):
         # 初始化设备序列号
         try:
-            self.update_device_serial("127.0.0.1:5555")
+            # 如果已经有序列号，则尝试更新该序列号；否则使用默认值
+            target_serial = self.device_serial if self.device_serial else "127.0.0.1:5555"
+            self.update_device_serial(target_serial)
             logger.info(f"最终使用设备: {self.device_serial}")
         except RuntimeError as e:
             logger.exception(f"初始化设备序列号错误: ", e)
-            exit(1)
+            self.is_connected = False
+            return
 
         if self.device_serial:
-            self.connect_to_emulator()
             # 获取屏幕分辨率
             self.screen_width, self.screen_height = self.get_window_size()
+            self.is_connected = True
         else:
             logger.warning(f"连接模拟器失败，使用默认分辨率1920x1080。")
             self.screen_width, self.screen_height = 1920, 1080
+            self.is_connected = False
 
     def connect_to_emulator(self):
         try:
@@ -135,13 +139,17 @@ class AdbConnector:
                 return self.device_serial
 
             logger.error("未找到可连接的Android设备")
+            self.device_serial = ""
             return ""
 
         except Exception as e:
             logger.exception(f"设备检测失败", e)
+            self.device_serial = ""
             return ""
 
     def capture_screenshot(self):
+        if not self.is_connected:
+            return None
         return self.capture_screenshot_raw_gzip()
 
     def capture_screenshot_png(self):
