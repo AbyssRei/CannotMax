@@ -80,6 +80,22 @@ class AdbConnector:
             screen_height = 1080
         return screen_width, screen_height
 
+    def get_device_list(self):
+        try:
+            device_cmd = f"{self.adb_path} devices"
+            result = subprocess.run(
+                device_cmd, shell=True, capture_output=True, text=True, timeout=5
+            )
+            devices: list[str] = []
+            for line in result.stdout.split("\n"):
+                if "\tdevice" in line:
+                    dev = line.split("\t")[0]
+                    devices.append(dev)
+            return devices
+        except Exception as e:
+            logger.exception(f"获取设备列表失败", e)
+            return []
+
     def update_device_serial(self, serial):
         try:
             if serial == "":

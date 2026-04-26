@@ -68,7 +68,7 @@ class AutoFetch:
         self.training_duration = training_duration  # 训练时长
         self.data_folder = Path(f"data")  # 数据文件夹路径
         self.image_buffer = deque(maxlen=5)  # 图片缓存队列，设置队列长短来保存结算前的图片
-        self.recognizer = RecognizeMonster()
+        self.recognizer = RecognizeMonster(method="ADB")
         self.cannot_model = CannotModel()
         self.last_state = GameState.UNKNOWN
 

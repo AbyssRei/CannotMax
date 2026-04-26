@@ -90,6 +90,9 @@ class ArknightsApp(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        # 捕获模式：ADB, WIN
+        self.current_capture_mode = "ADB"
+
         # 尝试连接模拟器
         self.adb_connector = loadData.AdbConnector()
         self.adb_connector_thread = ADBConnectorThread(self)
@@ -97,8 +100,6 @@ class ArknightsApp(QMainWindow):
         self.adb_connector_thread.start()
 
         self.auto_fetch_running = False
-        self.no_region = True
-        self.first_recognize = True
         self.is_invest = False
         self.game_mode = "单人"
 
@@ -106,7 +107,7 @@ class ArknightsApp(QMainWindow):
         self.cannot_model = CannotModel()
 
         # 怪物识别模块
-        self.recognizer = recognize.RecognizeMonster()
+        self.recognizer = recognize.RecognizeMonster(method="ADB")
 
         # 初始化UI后加载历史数据
         logger.info("尝试获取错题本")
@@ -249,6 +250,13 @@ class ArknightsApp(QMainWindow):
         self.recognize_button.clicked.connect(self.recognize_and_predict)
         self.recognize_button.setStyleSheet(self.qt_button_style)
         result_identify_layout.addWidget(self.recognize_button)
+
+        self.recognize_only_button = QPushButton("仅识别")
+        self.recognize_only_button.clicked.connect(self.recognize_only)
+        self.recognize_only_button.setStyleSheet(self.qt_button_style)
+        self.recognize_only_button.setFixedWidth(80)  # 小按钮
+        result_identify_layout.addWidget(self.recognize_only_button)
+
         result_layout.addWidget(result_identify_group)
 
         center_layout.addWidget(result_group)
@@ -332,7 +340,6 @@ class ArknightsApp(QMainWindow):
 
         self.adb_mode_btn = QPushButton("安卓端-ADB")
         self.pc_mode_btn = QPushButton("PC端")
-        self.pc_mode_btn.clicked.connect(lambda: QMessageBox.information(self, "提示", "PC端暂不支持"))
         self.win_mode_btn = QPushButton("窗口截取")
 
         mode_btns = [self.adb_mode_btn, self.pc_mode_btn, self.win_mode_btn]
@@ -359,6 +366,9 @@ class ArknightsApp(QMainWindow):
             mode_row_layout.addWidget(btn)
 
         self.adb_mode_btn.setChecked(True)
+        self.adb_mode_btn.clicked.connect(lambda: self.on_mode_changed("ADB"))
+        self.pc_mode_btn.clicked.connect(lambda: self.on_mode_changed("PC"))
+        self.win_mode_btn.clicked.connect(lambda: self.on_mode_changed("WIN"))
         connection_layout.addWidget(mode_row)
 
         # 序列号行
@@ -367,9 +377,10 @@ class ArknightsApp(QMainWindow):
         conn_row1_layout.setContentsMargins(0, 0, 0, 0)
 
         self.serial_label = QLabel("模拟器序列号:")
-        self.serial_entry = QLineEdit()
-        self.serial_entry.setFixedWidth(120)
-        self.serial_entry.setPlaceholderText("127.0.0.1:5555")
+        self.serial_entry = QComboBox()
+        self.serial_entry.setEditable(True)
+        self.serial_entry.setFixedWidth(150)
+        self.serial_entry.lineEdit().setPlaceholderText("127.0.0.1:5555")
 
         self.serial_button = QPushButton("更新")
         self.serial_button.clicked.connect(self.update_device_serial)
@@ -387,6 +398,10 @@ class ArknightsApp(QMainWindow):
         self.choose_window_button.clicked.connect(self.choose_capture_window)
         self.reselect_button = QPushButton("选择范围")
         self.reselect_button.clicked.connect(self.reselect_roi)
+
+        # 初始为 ADB 模式，禁用窗口捕获相关按钮
+        self.choose_window_button.setEnabled(False)
+        self.reselect_button.setEnabled(False)
 
         conn_row2_layout.addWidget(self.choose_window_button)
         conn_row2_layout.addWidget(self.reselect_button)
@@ -449,6 +464,7 @@ class ArknightsApp(QMainWindow):
         self.update_monster_signal.connect(self.update_monster)
         self.update_prediction_signal.connect(self.update_prediction)
         self.update_statistics_signal.connect(self.update_statistics)
+        self.refresh_device_list()
 
     def toggle_input_panel(self):
         """切换输入面板的显示"""
@@ -482,6 +498,43 @@ class ArknightsApp(QMainWindow):
 
         self.size_animation.finished.connect(set_fixed_after_animation)
 
+    def on_mode_changed(self, mode):
+        """切换捕获模式"""
+        if mode == "PC":
+            QMessageBox.information(self, "提示", "PC端暂不支持")
+            # 恢复之前的选中状态
+            if self.current_capture_mode == "ADB":
+                self.adb_mode_btn.setChecked(True)
+            else:
+                self.win_mode_btn.setChecked(True)
+            return
+
+        self.current_capture_mode = mode
+        logger.info(f"切换捕获模式为: {mode}")
+
+        is_win_mode = (mode == "WIN")
+        is_adb_mode = (mode == "ADB")
+
+        # 切换窗口捕获相关控件
+        self.choose_window_button.setEnabled(is_win_mode)
+        self.reselect_button.setEnabled(is_win_mode)
+        
+        # 切换 ADB 相关控件
+        self.serial_label.setEnabled(is_adb_mode)
+        self.serial_entry.setEnabled(is_adb_mode)
+        self.serial_button.setEnabled(is_adb_mode)
+
+        if mode == "ADB":
+            self.refresh_device_list()
+            self.recognizer = recognize.RecognizeMonster(method="ADB")
+            if not self.adb_connector.device_serial:
+                self.adb_connector_thread.start()
+        elif mode == "WIN":
+            if self.recognizer.method != "WIN":
+                self.recognizer = recognize.RecognizeMonster(method="WIN")
+            if self.recognizer._winrt is None:
+                self.choose_capture_window()
+
     def on_adb_connected(self):
         logger.info("模拟器初始化完成")
 
@@ -507,11 +560,11 @@ class ArknightsApp(QMainWindow):
                     return
                 hint = ""
                 if "window_name" in sel:
-                    self.recognizer = recognize.RecognizeMonster(window_name=sel["window_name"], monitor_index=None)
+                    self.recognizer = recognize.RecognizeMonster(method="WIN", window_name=sel["window_name"], monitor_index=None)
                     hint = f"已切换至窗口：{sel['window_name']}"
                 else:
                     idx = max(1, sel["monitor_index"])
-                    self.recognizer = recognize.RecognizeMonster(window_name=None, monitor_index=idx)
+                    self.recognizer = recognize.RecognizeMonster(method="WIN", window_name=None, monitor_index=idx)
                     hint = f"已切换至整屏：显示器 {sel['monitor_index']}"
 
                 self.no_region = True
@@ -520,7 +573,7 @@ class ArknightsApp(QMainWindow):
             QMessageBox.critical(self, "异常", f"{e}\n\n{traceback.format_exc()}")
         finally:
             self._switching_source = False
-            self.choose_window_button.setEnabled(True)
+            self.choose_window_button.setEnabled(self.current_capture_mode == "WIN")
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -708,20 +761,26 @@ class ArknightsApp(QMainWindow):
             left_monsters_dict, right_monsters_dict = self.input_panel.get_monster_counts()
             self.history_match_ui.render_similar_matches(left_monsters_dict, right_monsters_dict)
 
-    def recognize(self):
-        if self.auto_fetch_running:
+    def get_recognize(self):
+        """
+        根据当前模式获取截图并识别
+        """
+        screenshot = None
+        if self.current_capture_mode == "ADB":
             screenshot = self.adb_connector.capture_screenshot()
-        else:
-            screenshot = None
-
-        if self.no_region:  # TODO: 判断需要移至recognize
-            if self.first_recognize:
+            if screenshot is None:
+                # 尝试重新连接一次
                 self.adb_connector.connect()
-                self.first_recognize = False
-            screenshot = self.adb_connector.capture_screenshot()  # TODO: 如果 self.no_region 为 True，则会被调用两次。
+                screenshot = self.adb_connector.capture_screenshot()
+            if screenshot is None:
+                logger.error("ADB 截图失败")
+            
+            results = self.recognizer.process_regions(screenshot)
+        else:
+            # WIN 模式，recognizer 内部处理 WinRT 或 PIL
+            results = self.recognizer.process_regions(None)
 
-        results = self.recognizer.process_regions(screenshot)
-        return results, screenshot
+        return results
 
     def update_monster(self, results):
         """
@@ -741,16 +800,19 @@ class ArknightsApp(QMainWindow):
                         right_counts[str(matched_id)] = int(number)
         self.input_panel.set_monster_counts(left_counts, right_counts)
 
+    def recognize_only(self):
+        recognize_results = self.get_recognize()
+        self.update_monster(recognize_results)
+
     def recognize_and_predict(self):
-        results, screenshot = self.recognize()
-        self.update_monster(results)
+        recognize_results = self.get_recognize()
+        self.update_monster(recognize_results)
         prediction = self.get_prediction()
         self.update_prediction(prediction)
         # 历史对局
         if self.history_match_ui.isVisible():
             left_monsters_dict, right_monsters_dict = self.input_panel.get_monster_counts()
             self.history_match_ui.render_similar_matches(left_monsters_dict, right_monsters_dict)
-        return prediction, results, screenshot
 
     def toggle_history_panel(self):
         """切换历史对局面板的显示"""
@@ -773,7 +835,6 @@ class ArknightsApp(QMainWindow):
 
     def reselect_roi(self):
         self.recognizer.select_roi()
-        self.no_region = False
 
     def toggle_auto_fetch(self):
         if not (hasattr(self, "auto_fetch") and self.auto_fetch.auto_fetch_running):
@@ -803,8 +864,23 @@ class ArknightsApp(QMainWindow):
         )
         self.stats_label.setText(stats_text)
 
+    def refresh_device_list(self):
+        """刷新并更新模拟器序列号下拉列表"""
+        current_text = self.serial_entry.currentText()
+        devices = self.adb_connector.get_device_list()
+        self.serial_entry.clear()
+        if devices:
+            self.serial_entry.addItems(devices)
+            if current_text in devices:
+                self.serial_entry.setCurrentText(current_text)
+            else:
+                self.serial_entry.setCurrentIndex(0)
+        else:
+            self.serial_entry.addItem("127.0.0.1:5555")
+            self.serial_entry.setCurrentText(current_text if current_text else "127.0.0.1:5555")
+
     def update_device_serial(self):
-        new_serial = self.serial_entry.text()
+        new_serial = self.serial_entry.currentText()
         self.adb_connector.update_device_serial(new_serial)
         QMessageBox.information(self, "提示", f"已更新模拟器序列号为: {new_serial}")
 

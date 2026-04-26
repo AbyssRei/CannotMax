@@ -58,7 +58,8 @@ def get_rapidocr_engine(prefer_gpu=False):
 
 class RecognizeMonster:
     ROI_RELATIVE = [(0.2464, 0.8410), (0.7542, 0.9510)] # 16:9下怪物区域相对坐标
-    def __init__(self, window_name: str | None = None, monitor_index: int | None = None):
+    def __init__(self, method: str = "ADB", window_name: str | None = None, monitor_index: int | None = None):
+        self.method = method
         self.main_roi = [(0, 0), (1919, 1079)] # 主区域坐标
         # 鼠标交互全局变量
         self.roi_box = []
@@ -68,25 +69,28 @@ class RecognizeMonster:
         self._winrt: WinRTScreenCapture | None = None
 
         # 初始化 WinRTScreenCapture
-        if window_name is not None or monitor_index is not None:
-            try:
-                logger.info("初始化 WinRT 屏幕捕获...")
-                self._winrt = WinRTScreenCapture(
-                    window_name=window_name,
-                    monitor_index=monitor_index,
-                    capture_cursor=False,
-                    draw_border=None,
-                    minimum_update_interval_ms=16,  # ~60FPS，按需
-                )
+        if self.method == "WIN":
+            if window_name is not None or monitor_index is not None:
+                try:
+                    logger.info("初始化 WinRT 屏幕捕获...")
+                    self._winrt = WinRTScreenCapture(
+                        window_name=window_name,
+                        monitor_index=monitor_index,
+                        capture_cursor=False,
+                        draw_border=None,
+                        minimum_update_interval_ms=16,  # ~60FPS，按需
+                    )
 
-                # 重置 main_roi = 全图，方便用户重新框选
-                frame = self._winrt.snapshot_once()
-                h, w = frame.shape[:2]
-                self.main_roi = [(0, 0), (w - 1, h - 1)]
-            except Exception as e:
-                logger.exception("WinRT capture init failed: %s", e)
-                self._winrt = None # 将 _winrt 设置为 None，表示初始化失败
-                raise # 重新抛出异常，以便上层捕获
+                    # 重置 main_roi = 全图，方便用户重新框选
+                    frame = self._winrt.snapshot_once()
+                    h, w = frame.shape[:2]
+                    self.main_roi = [(0, 0), (w - 1, h - 1)]
+                except Exception as e:
+                    logger.exception("WinRT capture init failed: %s", e)
+                    self._winrt = None # 将 _winrt 设置为 None，表示初始化失败
+                    raise # 重新抛出异常，以便上层捕获
+            else:
+                logger.info("WIN 模式未指定窗口或显示器，将使用 PIL 作为回退")
 
     def mouse_callback(self, event, x:int, y:int, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -104,15 +108,18 @@ class RecognizeMonster:
         """改进的交互式区域选择"""
         while True:
             # 获取初始截图
-            if self._winrt is not None:
+            if self.method == "WIN" and self._winrt is not None:
                 # 用当前 WinRT 帧作为底图（已经是BGR）
                 logger.info("使用 WinRT 帧作为底图")
                 img = self._winrt.snapshot_once()
-            else:
+            elif self.method == "WIN" or self.method == "PIL":
                 # 兼容旧路径：整屏抓取
                 logger.info("使用 PIL 抓取全屏作为底图")
                 screenshot = np.array(ImageGrab.grab())
                 img = cv2.cvtColor(screenshot, cv2.COLOR_RGB2BGR)
+            else:
+                logger.error(f"当前模式 {self.method} 不支持交互式选择 ROI")
+                return None
 
             # 添加操作提示
             cv2.putText(img, "Drag to select area | ENTER:confirm | ESC:retry",
@@ -175,7 +182,7 @@ class RecognizeMonster:
         logger.info(f"获取区域 {self.main_roi} 的屏幕截图")
         (x1, y1), (x2, y2) = self.main_roi
         bbox = (x1, y1, x2, y2)
-        if self._winrt is not None:
+        if self.method == "WIN" and self._winrt is not None:
             logger.info("使用 WinRT 进行截图")
             screenshot = self._winrt.snapshot_once(bbox=bbox)  # BGR
         else:
@@ -192,9 +199,9 @@ class RecognizeMonster:
             x_min, x_max, y_min, y_max = width, 0, height, 0
             for ax1, ay1, ax2, ay2 in avatar:
                 x_min = min(x_min, min(ax1, ax2))
-                x_max = max(ax1, ax2)
+                x_max = max(x_max, max(ax1, ax2))
                 y_min = min(y_min, min(ay1, ay2))
-                y_max = max(ay1, ay2)
+                y_max = max(y_max, max(ay1, ay2))
             x_min = max(0, x_min)
             y_min = max(0, y_min)
             # 假如找到过能用main_roi的就存起来
@@ -227,18 +234,20 @@ class RecognizeMonster:
         """
         results = []
         (x1, y1), (x2, y2) = self.main_roi
-        # 如果没有提供adb 图像，则获取屏幕截图（仅截取主区域）
-        if image_adb is None:
-            logger.info("未提供ADB图像，使用手动截图")
-            ocr_threshold = 0.8  # 对于手动截图，降低OCR阈值以避免漏识别
-            screenshot = self.get_manual_screenshot()
-        else:
+        # 如果是ADB模式，优先使用传入的图像
+        if self.method == "ADB":
+            if image_adb is None:
+                raise ValueError("ADB 模式下必须提供 image_adb")
             logger.info("使用ADB图像")
             x1 = int(self.ROI_RELATIVE[0][0] * image_adb.shape[1])
             y1 = int(self.ROI_RELATIVE[0][1] * image_adb.shape[0])
             x2 = int(self.ROI_RELATIVE[1][0] * image_adb.shape[1])
             y2 = int(self.ROI_RELATIVE[1][1] * image_adb.shape[0])
             screenshot = image_adb[y1:y2, x1:x2]
+        else:
+            logger.info(f"使用 {self.method} 手动截图")
+            ocr_threshold = 0.8  # 对于手动截图，降低OCR阈值以避免漏识别
+            screenshot = self.get_manual_screenshot()
 
         # 确保图像不为空
         if screenshot.size == 0:
@@ -466,9 +475,9 @@ def load_ref_images(ref_dir="images"):
 
 if __name__ == "__main__":
     print("请用鼠标拖拽选择主区域...")
-    recognizer = RecognizeMonster()
+    recognizer = RecognizeMonster(method="PIL")
     main_roi = recognizer.select_roi()
-    results, _ = recognizer.process_regions(main_roi)
+    results = recognizer.process_regions()
     # 输出结果
     print("\n识别结果：")
     for res in results:
