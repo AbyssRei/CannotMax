@@ -213,13 +213,13 @@ class UnitAwareTransformer(nn.Module):
             nn.Linear(embed_dim, embed_dim * 2), nn.ReLU(), nn.Linear(embed_dim * 2, 1)
         )
 
-    def forward(self, left_sign, left_count, right_sign, right_count):
+    def forward(self, left_signs, left_counts, right_signs, right_counts):
         # 提取TopK特征（怪物 + 场地）
         # 由于现在包含场地特征，需要增加k值以确保重要特征不被遗漏
         # k=8 可以保证包含主要怪物和所有场地特征
-        k = min(8, left_count.shape[1])  # 确保k不超过实际特征数
-        left_values, left_indices = torch.topk(left_count, k=k, dim=1)
-        right_values, right_indices = torch.topk(right_count, k=k, dim=1)
+        k = min(8, left_counts.shape[1])  # 确保k不超过实际特征数
+        left_values, left_indices = torch.topk(left_counts, k=k, dim=1)
+        right_values, right_indices = torch.topk(right_counts, k=k, dim=1)
 
         # 嵌入
         left_feat = self.unit_embed(left_indices)  # (B, k, 128)
