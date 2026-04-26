@@ -9,7 +9,7 @@ import numpy as np
 from pathlib import Path
 import onnxruntime  # workaround: Pre-import to avoid ImportError: DLL load failed while importing onnxruntime_pybind11_state: 动态链接库(DLL)初始化例程失败。
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout
-from PyQt6.QtWidgets import QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox
+from PyQt6.QtWidgets import QLabel, QPushButton, QLineEdit, QCheckBox, QComboBox, QButtonGroup
 from PyQt6.QtWidgets import QGroupBox, QMessageBox, QGraphicsDropShadowEffect, QFrame
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QPixmap, QFont, QIcon, QPainter, QColor
@@ -321,6 +321,45 @@ class ArknightsApp(QMainWindow):
         # --- 连接设置 ---
         connection_group = QGroupBox("连接设置")
         connection_layout = QVBoxLayout(connection_group)
+
+        # 模式选择行
+        mode_row = QWidget()
+        mode_row_layout = QHBoxLayout(mode_row)
+        mode_row_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
+
+        self.adb_mode_btn = QPushButton("安卓端-ADB")
+        self.pc_mode_btn = QPushButton("PC端")
+        self.pc_mode_btn.clicked.connect(lambda: QMessageBox.information(self, "提示", "PC端暂不支持"))
+        self.win_mode_btn = QPushButton("窗口截取")
+
+        mode_btns = [self.adb_mode_btn, self.pc_mode_btn, self.win_mode_btn]
+        mode_style = """
+            QPushButton {
+                background-color: #313131;
+                color: #F3F31F;
+                border-radius: 10px;
+                padding: 5px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #414141;
+            }
+            QPushButton:checked {
+                background-color: #F5EA2D;
+                color: #313131;
+            }
+        """
+        for btn in mode_btns:
+            btn.setCheckable(True)
+            btn.setStyleSheet(mode_style)
+            self.mode_group.addButton(btn)
+            mode_row_layout.addWidget(btn)
+
+        self.adb_mode_btn.setChecked(True)
+        connection_layout.addWidget(mode_row)
 
         # 序列号行
         conn_row1 = QWidget()
