@@ -34,35 +34,17 @@ CONFIG = {
 }
 
 def build_exe():
-    """使用PyInstaller打包"""
+    """使用PyInstaller打包，直接调用spec文件"""
     venv_python = str(Path(CONFIG["venv_dir"]) / "Scripts" / "python.exe")
-    script_path = Path(CONFIG["source_script"])
-    icon_path = Path(CONFIG["icon_file"])
+    
+    # 直接运行 spec 文件，保持 spec 文件中的过滤逻辑生效
     build_cmd = [
         venv_python, "-m", "PyInstaller",
         "--noconfirm",
-        "--onedir",
-        "--console" if CONFIG["console"] else "--windowed",  # 动态选择参数
-        "--name", script_path.stem,
         "--distpath", CONFIG["output_dir"],
         "--workpath", "build",
-        "--exclude-module", "train",
-        "--exclude-module", "torch",
-        "--exclude-module", "torchvision",
-        # "--exclude-module", "onnxruntime",
-        "--exclude-module", "predict",
-        # "--exclude-module", "toml",
-        # "--add-binary", ".venv/Lib/site-packages/onnxruntime/capi/onnxruntime_providers_shared.dll;.",
+        "main.spec"
     ]
-
-    if icon_path.exists():
-        build_cmd.extend(["--icon", str(icon_path)])
-
-    # 添加附加数据
-    for src, dest in CONFIG["add_data"]:
-        build_cmd.extend(["--add-data", f"{Path(src).resolve()};{dest}"])
-
-    build_cmd.append(str(script_path))
 
     try:
         subprocess.check_call(build_cmd)

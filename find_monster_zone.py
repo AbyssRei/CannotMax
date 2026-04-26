@@ -1,11 +1,36 @@
 import logging
 import cv2
 import numpy as np
-from scipy.optimize import least_squares
-from scipy.spatial.distance import pdist, squareform
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+def custom_least_squares(fun, x0, args=()):
+    """
+    A simple linear least squares solver to replace scipy.optimize.least_squares.
+    Constructs a numerical Jacobian and solves the linear system.
+    """
+    x = np.array(x0, dtype=float)
+    r = np.array(fun(x, *args))
+    if r.size == 0:
+        class Result:
+            def __init__(self, x): self.x = x
+        return Result(x)
+    
+    n = len(x)
+    J = np.zeros((len(r), n))
+    eps = 1e-6
+    for i in range(n):
+        x_eps = x.copy()
+        x_eps[i] += eps
+        r_eps = np.array(fun(x_eps, *args))
+        J[:, i] = (r_eps - r) / eps
+    
+    delta, _, _, _ = np.linalg.lstsq(J, -r, rcond=None)
+    
+    class Result:
+        def __init__(self, x): self.x = x
+    return Result(x + delta)
 
 # 类伽马变换函数
 def adjust_quasi_gamma(image):
@@ -151,7 +176,8 @@ def detect_outliers(coords, threshold=0.1):
     coords = np.array(coords)
 
     # 计算所有点之间的距离矩阵
-    distance_matrix = squareform(pdist(coords))
+    diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+    distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
 
     # 计算每个点的平均距离
     avg_distances = np.mean(distance_matrix, axis=1)
@@ -408,7 +434,7 @@ def cutFrame(image, high_tol=False):
     initial_guess = [0, 200, 60]
 
     # 使用最小二乘法求解
-    result = least_squares(residuals, initial_guess, args=(filtered_big, filtered_small))
+    result = custom_least_squares(residuals, initial_guess, args=(filtered_big, filtered_small))
     avatar, nums = create_frame(result.x[0], result.x[1], result.x[2], high_tol)
 
     divisors = np.array([width, height, width, height])
