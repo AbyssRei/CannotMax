@@ -30,14 +30,26 @@ def main():
     merged_data = []
     header = None
 
-    # 遍历当前文件夹下的所有子文件夹
-    for item in os.listdir(base_dir):
-        sub_dir = os.path.join(base_dir, item)
-        
-        # 跳过目标images文件夹，以及非文件夹的文件
-        if not os.path.isdir(sub_dir) or item == 'images':
-            continue
+    # 收集所有待处理的子目录
+    target_sub_dirs = []
+    
+    # 扫描根目录和 tmp 目录
+    scan_dirs = [base_dir]
+    tmp_dir = os.path.join(base_dir, 'tmp')
+    if os.path.exists(tmp_dir) and os.path.isdir(tmp_dir):
+        scan_dirs.append(tmp_dir)
 
+    for s_dir in scan_dirs:
+        for item in os.listdir(s_dir):
+            sub_dir = os.path.join(s_dir, item)
+            
+            # 跳过目标目录和特殊目录
+            if not os.path.isdir(sub_dir) or item in ['images', 'tmp', 'package', '__pycache__']:
+                continue
+            
+            target_sub_dirs.append(sub_dir)
+
+    for sub_dir in target_sub_dirs:
         # 1. 复制子文件夹内的图片
         src_images_dir = os.path.join(sub_dir, 'images')
         if os.path.exists(src_images_dir) and os.path.isdir(src_images_dir):

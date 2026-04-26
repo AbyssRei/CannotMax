@@ -5,6 +5,10 @@ import os
 def unpackage():
     # 当前脚本所在目录
     current_dir = Path(__file__).parent
+    # 解压目标目录
+    extract_dir = current_dir / "tmp"
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    
     # 压缩包所在目录
     package_dir = current_dir / "package"
     
@@ -19,13 +23,13 @@ def unpackage():
         print("未找到任何 .zip 文件")
         return
 
-    print(f"找到 {len(zip_files)} 个压缩包，准备解压到: {current_dir}")
+    print(f"找到 {len(zip_files)} 个压缩包，准备解压到: {extract_dir}")
 
     for zip_path in zip_files:
         print(f"正在解压: {zip_path.name}...")
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(current_dir)
+                zip_ref.extractall(extract_dir)
             print(f"成功解压: {zip_path.name}")
         except Exception as e:
             print(f"解压 {zip_path.name} 时出错: {e}")
