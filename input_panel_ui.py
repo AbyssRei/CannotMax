@@ -458,7 +458,7 @@ class InputPanelUI(QFrame):
     def build_terrain_features(self, left_counts, right_counts):
         """构建包含地形的完整特征向量（支持多选地形）"""
         # Use the actual number of terrain feature columns
-        num_field_features = len(self.terrain_feature_columns)
+        num_field_features = len(self.terrain_feature_columns) if FIELD_FEATURE_COUNT else 0
 
         # Build terrain feature vector
         terrain_features = np.zeros(num_field_features)

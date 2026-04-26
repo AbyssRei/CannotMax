@@ -887,6 +887,7 @@ class ArknightsApp(QMainWindow):
     def update_device_serial(self):
         new_serial = self.serial_entry.currentText()
         self.adb_connector.update_device_serial(new_serial)
+        self.adb_connector.connect()  # 尝试连接新设备
         QMessageBox.information(self, "提示", f"已更新模拟器序列号为: {new_serial}")
 
     def start_callback(self):
