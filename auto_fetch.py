@@ -461,7 +461,7 @@ class AutoFetch:
                 logger.info(f"匹配到状态: {self.last_state} -> {current_state}, score:{best_score:.4f}")
                 self.last_state = current_state
         else:
-            # logger.debug(f"状态机匹配置信度过低: idx:{best_idx}, score:{best_score:.4f}")
+            # logger.info(f"状态机匹配置信度过低: idx:{best_idx}, score:{best_score:.4f}")
             pass
 
         # 状态执行
