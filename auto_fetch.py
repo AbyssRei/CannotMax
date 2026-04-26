@@ -70,6 +70,7 @@ class AutoFetch:
         self.image_buffer = deque(maxlen=5)  # 图片缓存队列，设置队列长短来保存结算前的图片
         self.recognizer = RecognizeMonster()
         self.cannot_model = CannotModel()
+        self.last_state = GameState.UNKNOWN
 
         # 初始化状态匹配模板，缩小匹配尺寸提高速度
         self.MATCH_WIDTH = 1920 // 4
@@ -444,7 +445,9 @@ class AutoFetch:
                 current_state = GameState.SETTLEMENT
             elif best_idx in [12, 13]:
                 current_state = GameState.FINISHED
-            logger.debug(f"匹配到状态:{current_state}, score:{best_score:.4f}")
+            if self.last_state != current_state:
+                logger.info(f"匹配到状态: {self.last_state} -> {current_state}, score:{best_score:.4f}")
+                self.last_state = current_state
         else:
             # logger.debug(f"状态机匹配置信度过低: idx:{best_idx}, score:{best_score:.4f}")
             pass
