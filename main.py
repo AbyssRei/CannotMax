@@ -253,10 +253,14 @@ class ArknightsApp(QMainWindow):
 
         center_layout.addWidget(result_group)
 
-        # 底部区域 - 控制面板
+        # 底部区域 - 控制面板和连接设置
         self.bottom_group = QWidget()
         self.bottom_layout = QHBoxLayout(self.bottom_group)
 
+        # 左侧垂直布局：控制面板 + 连接设置
+        left_column = QVBoxLayout()
+
+        # --- 控制面板 ---
         control_group = QGroupBox("控制面板")
         control_layout = QVBoxLayout(control_group)
 
@@ -285,63 +289,77 @@ class ArknightsApp(QMainWindow):
         row1_layout.addWidget(self.mode_menu)
         row1_layout.addWidget(self.invest_checkbox)
 
-        # 第三行按钮
+        # 第二行按钮 - 数据操作和统计
         row2 = QWidget()
         row2_layout = QHBoxLayout(row2)
         row2_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.serial_label = QLabel("模拟器序列号:")
-        self.serial_entry = QLineEdit()
-        self.serial_entry.setFixedWidth(100)
-        self.serial_entry.setPlaceholderText("127.0.0.1:5555")  # 设置默认灰色文本
-
-        self.serial_button = QPushButton("更新")
-        self.serial_button.clicked.connect(self.update_device_serial)
-
         self.package_data_button = QPushButton("数据打包")
         self.package_data_button.clicked.connect(self.package_data_and_show)
         row2_layout.addWidget(self.package_data_button)
-        row2_layout.addWidget(self.serial_label)
-        row2_layout.addWidget(self.serial_entry)
-        row2_layout.addWidget(self.serial_button)
-
-        # 第三行按钮
-        row3 = QWidget()
-        row3_layout = QHBoxLayout(row3)
-        row3_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.reselect_button = QPushButton("选择范围")
-        self.reselect_button.clicked.connect(self.reselect_roi)
-        self.choose_window_button = QPushButton("选择截屏窗口")
-        self.choose_window_button.clicked.connect(self.choose_capture_window)
-
-        row3_layout.addWidget(self.choose_window_button)
-        row3_layout.addWidget(self.reselect_button)
 
         # 统计信息显示
         self.stats_label = QLabel()
         self.stats_label.setFont(QFont("Microsoft YaHei", 10))
-
-        # 添加所有行到控制布局
-        control_layout.addWidget(row1)
-        control_layout.addWidget(row2)
-        control_layout.addWidget(row3)
+        row2_layout.addWidget(self.stats_label)
 
         # GitHub链接
         github_label = QLabel(
             '<a href="https://github.com/Ancientea/CannotMax" style="color: #2196F3; text-decoration: none;">https://github.com/Ancientea/CannotMax</a>'
         )
         github_label.setMargin(0)
-        github_label.setAlignment(Qt.AlignmentFlag.AlignLeft)  # 改为左对齐
+        github_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         github_label.setOpenExternalLinks(True)
         github_label.setFont(QFont("Microsoft YaHei", 9))
-        github_label.setContentsMargins(0, 0, 0, 0)  # 减少内边距和外边距
+        github_label.setContentsMargins(0, 0, 0, 0)
 
+        # 添加到控制布局
+        control_layout.addWidget(row1)
+        control_layout.addWidget(row2)
         control_layout.addWidget(github_label)
 
-        control_layout.addWidget(self.stats_label)
+        # --- 连接设置 ---
+        connection_group = QGroupBox("连接设置")
+        connection_layout = QVBoxLayout(connection_group)
 
-        # 第五行按钮 (其实是纵向的，懒得改名了)
+        # 序列号行
+        conn_row1 = QWidget()
+        conn_row1_layout = QHBoxLayout(conn_row1)
+        conn_row1_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.serial_label = QLabel("模拟器序列号:")
+        self.serial_entry = QLineEdit()
+        self.serial_entry.setFixedWidth(120)
+        self.serial_entry.setPlaceholderText("127.0.0.1:5555")
+
+        self.serial_button = QPushButton("更新")
+        self.serial_button.clicked.connect(self.update_device_serial)
+
+        conn_row1_layout.addWidget(self.serial_label)
+        conn_row1_layout.addWidget(self.serial_entry)
+        conn_row1_layout.addWidget(self.serial_button)
+
+        # 捕获设置行
+        conn_row2 = QWidget()
+        conn_row2_layout = QHBoxLayout(conn_row2)
+        conn_row2_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.choose_window_button = QPushButton("选择截屏窗口")
+        self.choose_window_button.clicked.connect(self.choose_capture_window)
+        self.reselect_button = QPushButton("选择范围")
+        self.reselect_button.clicked.connect(self.reselect_roi)
+
+        conn_row2_layout.addWidget(self.choose_window_button)
+        conn_row2_layout.addWidget(self.reselect_button)
+
+        connection_layout.addWidget(conn_row1)
+        connection_layout.addWidget(conn_row2)
+
+        # 将两个组框添加到左侧列
+        left_column.addWidget(control_group)
+        left_column.addWidget(connection_group)
+
+        # 第五行按钮 (纵向排列的功能按钮)
         row5 = QWidget()
         row5_layout = QVBoxLayout(row5)
 
@@ -368,8 +386,8 @@ class ArknightsApp(QMainWindow):
         self.always_on_top_button.setStyleSheet(self.qt_button_style)
         row5_layout.addWidget(self.always_on_top_button)
 
-        # 排布按钮
-        self.bottom_layout.addWidget(control_group)
+        # 排布底部布局
+        self.bottom_layout.addLayout(left_column)
         self.bottom_layout.addWidget(row5)
 
         center_layout.addWidget(self.bottom_group)
