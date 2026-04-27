@@ -53,18 +53,13 @@ class AutoFetch:
         start_callback: Callable[[], None],
         stop_callback: Callable[[], None],
         training_duration,
-        is_multi_instance=False,  # 新增：是否是多开模式
-        status_update_callback=None,  # 新增：状态更新回调函数
-        serial=None,  # 新增：设备序列号（端口）
     ):
         self.connector = connector
         self.game_mode = game_mode  # 游戏模式（30人或自娱自乐）
         self.is_invest = is_invest  # 是否投资
-        self.is_multi_instance = is_multi_instance  # 新增：是否是多开模式
-        self.status_update_callback = status_update_callback  # 新增：状态更新回调函数
-        self.serial = serial  # 新增：设备序列号（端口）
         self.current_prediction = 0.5  # 当前预测结果，初始值为0.5
         self.recognize_results = []  # 识别结果列表
+        self.field_recognizer = None # 场地识别实例
         self.field_recognize_result = {}  # 场地识别结果
         self.incorrect_fill_count = 0  # 填写错误次数
         self.total_fill_count = 0  # 总填写次数
@@ -83,8 +78,7 @@ class AutoFetch:
         self.cannot_model = CannotModel()
         self.last_state = GameState.UNKNOWN
         self.login_manager = LoginManager(connector)
-        self.unknown_start_time = None  # 新增：记录进入 UNKNOWN 状态的时间
-        self.has_checked_login_page = False  # 新增：是否已经检查过登录页面（仅用于首次启动）
+        self.state_start_time = time.time()  # 记录当前状态的开始时间
 
         # 初始化状态匹配模板，缩小匹配尺寸提高速度
         self.MATCH_WIDTH = 1920 // 4
@@ -104,17 +98,11 @@ class AutoFetch:
     
     def _log(self, level, message):
         """生成带有设备序列号的日志消息"""
-        if self.serial:
-            logger.log(level, f"[{self.serial}] {message}")
+        serial = getattr(self.connector, "device_serial", None)
+        if serial:
+            logger.log(level, f"[{serial}] {message}")
         else:
             logger.log(level, message)
-
-    def _check_stop_and_continue(self):
-        """检查是否收到停止信号"""
-        if not self.auto_fetch_running:
-            self._log(logging.INFO, "检测到停止信号")
-            return False
-        return True
 
     def _try_login_with_retry(self, max_wait_seconds=6):
         """尝试登录，如果未找到登录按钮则等待重试
@@ -127,22 +115,15 @@ class AutoFetch:
             False: 登录失败或收到停止信号
         """
         for i in range(max_wait_seconds):
-            if not self._check_stop_and_continue():
-                self.unknown_start_time = None
-                return False
-
             screenshot = self.connector.capture_screenshot()
             if screenshot is not None:
                 self._log(logging.INFO, "获取截图成功，检查是否存在登录按钮")
                 matched, _ = self.login_manager.match_template(screenshot, "login_button", threshold=0.9)
                 if matched:
                     self._log(logging.INFO, "找到登录按钮，执行登录流程")
-                    if not self._check_stop_and_continue():
-                        self.unknown_start_time = None
-                        return False
                     if self.login_manager.auto_login():
-                        self.unknown_start_time = None
-                        self._log(logging.INFO, "登录成功，重置 UNKNOWN 状态计时器")
+                        self.state_start_time = time.time()
+                        self._log(logging.INFO, "登录成功，重置状态计时器")
                         return True
                     else:
                         return False
@@ -158,29 +139,22 @@ class AutoFetch:
             True: 重启并登录成功
             False: 重启或登录失败，或收到停止信号
         """
-        if not self._check_stop_and_continue():
-            self.unknown_start_time = None
-            return False
-
         self._log(logging.INFO, "尝试重启游戏")
         if self.login_manager.restart_game():
             self._log(logging.INFO, "游戏重启成功，尝试重新登录")
-            if not self._check_stop_and_continue():
-                self.unknown_start_time = None
-                return False
             if self.login_manager.auto_login():
                 return True
             else:
                 self._log(logging.ERROR, "重启后自动登录失败，无法继续")
                 self.auto_fetch_running = False
                 self.stop_callback()
-                self.unknown_start_time = None
+                self.state_start_time = time.time()
                 return False
         else:
             self._log(logging.ERROR, "重启游戏失败")
             self.auto_fetch_running = False
             self.stop_callback()
-            self.unknown_start_time = None
+            self.state_start_time = time.time()
             return False
 
     def _init_templates(self):
@@ -589,7 +563,6 @@ class AutoFetch:
             # 平局或者其他也照常休息5秒
 
 
-
     def auto_fetch_data(self):
         relative_points = [
             (0.9297, 0.8833),  # 右ALL、返回主页、加入赛事、开始游戏
@@ -655,64 +628,22 @@ class AutoFetch:
                 elif best_idx in [12, 13]:
                     current_state = GameState.FINISHED
                 if self.last_state != current_state:
-                    logger.info(f"匹配到状态: {self.last_state} -> {current_state}, score:{best_score:.4f}")
-                    self.last_state = current_state
+                    logger.info(f"匹配到状态: {self.last_state.name} -> {current_state.name}, score:{best_score:.4f}")
             else:
                 # logger.info(f"状态机匹配置信度过低: idx:{best_idx}, score:{best_score:.4f}")
                 pass
 
-        # 处理 UNKNOWN 状态的超时逻辑（区分过场动画和真正掉线）
-        if current_state != GameState.UNKNOWN:
-            if self.unknown_start_time is not None:
-                self._log(logging.INFO, f"退出 UNKNOWN 状态，持续时间: {time.time() - self.unknown_start_time:.2f} 秒")
-            self.unknown_start_time = None  # 状态正常，重置计时器
-        else:
-            if self.unknown_start_time is None:
-                self.unknown_start_time = time.time()  # 刚进入 UNKNOWN 状态，开始计时
-                self._log(logging.INFO, "进入 UNKNOWN 状态，开始计时")
-        
-        # 如果状态发生变化，调用状态更新回调函数
+        # 处理状态发生变化时的逻辑
         if current_state != self.last_state:
+            old_state = self.last_state
             self.last_state = current_state
-            self._log(logging.INFO, f"游戏状态变化: {current_state.name}")
-            if self.status_update_callback:
-                try:
-                    self.status_update_callback()
-                except Exception as e:
-                    self._log(logging.WARNING, f"状态更新回调失败: {e}")
-        
-        # 如果连续处于 UNKNOWN 状态超过 3 秒
-        if current_state == GameState.UNKNOWN and self.unknown_start_time is not None and time.time() - self.unknown_start_time > 3.0 and time.time() - self.unknown_start_time < 15.0:
-            # 如果是多开模式，且尚未检查过登录页面，检查是否是刚启动的情况
-            if self.is_multi_instance and not self.has_checked_login_page and time.time() - self.start_time < 30:
-                self._log(logging.INFO, "连续 3 秒处于未知状态，尝试点击屏幕并检查登录按钮...")
-                # 点击屏幕中心
-                self.connector.click((0.5, 0.5))
-                self._log(logging.INFO, "点击屏幕中心")
-                
-                # 等待一段时间，让登录页面有足够的时间加载
-                self._log(logging.INFO, "等待登录页面加载...")
-                login_result = self._try_login_with_retry(max_wait_seconds=10)
-                self.has_checked_login_page = True  # 无论成功还是失败，都标记为已检查过登录页面
-                if not login_result:
-                    # 10秒后仍然未找到登录按钮，尝试重启游戏
-                    self._log(logging.INFO, "10秒后仍然未找到登录按钮，尝试重启游戏")
-                    if not self._restart_and_login():
-                        self._log(logging.ERROR, "重启游戏失败，结束本次 UNKNOWN 状态处理")
-                    self.unknown_start_time = None
-                    self._log(logging.INFO, "重置 UNKNOWN 状态计时器")
-            # 非多开模式，只记录日志，不执行自动点击
-            elif not self.is_multi_instance:
-                self._log(logging.DEBUG, "连续 3 秒处于未知状态，等待自动处理...")
+            elapsed = time.time() - self.state_start_time
+            self._log(logging.INFO, f"游戏状态变化: {old_state.name} -> {current_state.name}, 持续时间: {elapsed:.2f} 秒")
+            self.state_start_time = time.time()  # 重置状态开始时间
         
         # 如果连续处于 UNKNOWN 状态超过 30 秒（涵盖正常的过场动画加载时间）
-        elif current_state == GameState.UNKNOWN and self.unknown_start_time is not None and time.time() - self.unknown_start_time > 30.0:
-            self._log(logging.INFO, f"连续 {time.time() - self.unknown_start_time:.2f} 秒处于未知状态，开始检测是否断线...")
-            # 检查是否是因为用户点击了停止按钮
-            if not self._check_stop_and_continue():
-                self._log(logging.INFO, "用户停止了自动获取，不再执行登录流程")
-                self.unknown_start_time = None  # 重置计时器
-                return
+        if current_state == GameState.UNKNOWN and time.time() - self.state_start_time > 30.0:
+            self._log(logging.INFO, f"连续 {time.time() - self.state_start_time:.2f} 秒处于未知状态，开始检测是否断线...")
             self._log(logging.INFO, "检查是否在争锋频道页面")
             if not self.login_manager.is_in_competition_page(self.match_images, lambda: self.auto_fetch_running):
                 self._log(logging.INFO, "检测到登录下线页面，尝试重启游戏")
@@ -721,8 +652,8 @@ class AutoFetch:
             else:
                 self._log(logging.INFO, "确认在争锋频道页面，状态正常")
             # 检测完毕后，无论结果如何，重置计时器，避免频繁阻塞
-            self.unknown_start_time = None
-            self._log(logging.INFO, "重置 UNKNOWN 状态计时器")
+            self.state_start_time = time.time()
+            self._log(logging.INFO, "重置状态计时器")
 
         # 状态执行
         match current_state:
@@ -735,12 +666,7 @@ class AutoFetch:
                 if self.game_mode == "30人":
                     self.connector.click(relative_points[1])
                     self._log(logging.INFO, "竞猜对决30人")
-                    # 等待2秒，分解为多个短时间sleep并检查状态
-                    for i in range(2):
-                        if not self.auto_fetch_running:
-                            self._log(logging.INFO, "检测到停止信号，提前结束等待")
-                            return
-                        time.sleep(1)
+                    time.sleep(2)
                     self.connector.click(relative_points[0])
                     self._log(logging.INFO, "开始游戏")
                 else:
@@ -766,41 +692,21 @@ class AutoFetch:
                         else:
                             self.connector.click(relative_points[2])
                         self._log(logging.INFO, "投资右")
-                        # 等待3秒，分解为多个短时间sleep并检查状态
-                        for i in range(3):
-                            if not self.auto_fetch_running:
-                                self._log(logging.INFO, "检测到停止信号，提前结束等待")
-                                return
-                            time.sleep(1)
+                        time.sleep(3)
                     else:
                         if best_idx == 4:
                             self.connector.click(relative_points[1])
                         else:
                             self.connector.click(relative_points[3])
                         self._log(logging.INFO, "投资左")
-                        # 等待3秒，分解为多个短时间sleep并检查状态
-                        for i in range(3):
-                            if not self.auto_fetch_running:
-                                self._log(logging.INFO, "检测到停止信号，提前结束等待")
-                                return
-                            time.sleep(1)
+                        time.sleep(3)
                     if self.game_mode == "30人":
                         self._log(logging.INFO, "30人模式下，投资后需要等待20秒")
-                        # 等待20秒，分解为多个短时间sleep并检查状态
-                        for i in range(20):
-                            if not self.auto_fetch_running:
-                                self._log(logging.INFO, "检测到停止信号，提前结束等待")
-                                return
-                            time.sleep(1)
+                        time.sleep(5)
                 else:  # 不投资
                     self.connector.click(relative_points[4])
                     self._log(logging.INFO, "本轮观望")
-                    # 等待3秒，分解为多个短时间sleep并检查状态
-                    for i in range(3):
-                        if not self.auto_fetch_running:
-                            self._log(logging.INFO, "检测到停止信号，提前结束等待")
-                            return
-                        time.sleep(1)
+                    time.sleep(3)
             case GameState.IN_BATTLE:
                 # 等待结算状态，战斗中界面，保持状态
                 # self._log(logging.INFO, "等待战斗结束")
@@ -808,12 +714,7 @@ class AutoFetch:
             case GameState.SETTLEMENT:
                 # 结算状态，该轮次结算界面，识别结果并等待画面变化，根据画面跳转到下一轮次准备阶段或结束状态
                 self.battle_result(screenshot)
-                # 等待5秒，分解为多个短时间sleep并检查状态
-                for i in range(5):
-                    if not self.auto_fetch_running:
-                        self._log(logging.INFO, "检测到停止信号，提前结束等待")
-                        return
-                    time.sleep(1)
+                time.sleep(5)
             case GameState.FINISHED:
                 # 结束状态，所有轮次结束界面，返回主页并跳转到活动主界面状态
                 self.connector.click(relative_points[0])

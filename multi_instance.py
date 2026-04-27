@@ -43,29 +43,6 @@ class DeviceInstance:
                 logger.error(f"[{self.serial}] 连接失败")
                 return False
             
-            # 定义状态更新回调函数
-            def status_update():
-                # 在主线程中更新显示
-                import threading
-                if MultiInstanceManager.instance is not None:
-                    try:
-                        # 检查对象是否有效
-                        if hasattr(MultiInstanceManager.instance, 'isValid') and not MultiInstanceManager.instance.isValid():
-                            logger.warning(f"[{self.serial}] 状态更新回调失败: 实例无效")
-                            return
-                        
-                        if threading.current_thread() != threading.main_thread():
-                            from PyQt6.QtCore import QTimer, Qt
-                            # 使用 QTimer.singleShot() 在主线程中执行
-                            try:
-                                QTimer.singleShot(0, MultiInstanceManager.instance.update_display)
-                            except Exception as e:
-                                logger.warning(f"[{self.serial}] 状态更新回调失败: {e}")
-                        else:
-                            MultiInstanceManager.instance.update_display()
-                    except Exception as e:
-                        logger.warning(f"[{self.serial}] 状态更新回调失败: {e}")
-            
             self.auto_fetch = auto_fetch.AutoFetch(
                 self.connector,
                 game_mode,
@@ -75,10 +52,7 @@ class DeviceInstance:
                 updater=lambda: None,
                 start_callback=lambda: None,
                 stop_callback=lambda: None,
-                training_duration=-1,
-                is_multi_instance=True,
-                status_update_callback=status_update,
-                serial=self.serial  # 传递设备序列号（端口）
+                training_duration=-1
             )
             logger.info(f"[{self.serial}] 初始化 AutoFetch 成功")
             self.auto_fetch.start_auto_fetch()
@@ -109,19 +83,7 @@ class DeviceInstance:
         
         state_name = "过场动画"
         if hasattr(af, 'last_state') and af.last_state:
-            # 这里的映射需要对应 auto_fetch.GameState
-            state_mapping = {
-                "MAIN_MENU": "主菜单",
-                "MODE_SELECTION_UNSELECTED": "选择模式",
-                "MODE_SELECTION_SELECTED": "已选模式",
-                "PRE_BATTLE": "备战中",
-                "IN_BATTLE": "对战中",
-                "SETTLEMENT": "结算中",
-                "FINISHED": "已完成",
-                "UNKNOWN": "过场动画"
-            }
-            raw_name = af.last_state.name if hasattr(af.last_state, 'name') else str(af.last_state)
-            state_name = state_mapping.get(raw_name, raw_name)
+            state_name = af.last_state.name if hasattr(af.last_state, 'name') else str(af.last_state)
         
         return (f"[{self.serial:<15}] "
                 f"状态: {state_name:<8} | "
