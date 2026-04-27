@@ -772,7 +772,7 @@ class AutoFetch:
             )
             self.log_file_handler.setFormatter(file_formatter)
             self.log_file_handler.setLevel(logging.INFO)
-            logging.getLogger().addHandler(self.log_file_handler)
+            logger.addHandler(self.log_file_handler)
             
             # 启动自动获取数据线程
             threading.Thread(target=self.auto_fetch_loop).start()
@@ -789,6 +789,6 @@ class AutoFetch:
         logger.info("停止自动获取")
         self.stop_callback()
         if hasattr(self, "log_file_handler"):
-            logging.getLogger().removeHandler(self.log_file_handler)
+            logger.removeHandler(self.log_file_handler)
             self.log_file_handler.close()
         # 结束自动获取数据的线程
