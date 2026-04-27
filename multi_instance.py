@@ -120,7 +120,7 @@ class MultiInstanceManager(QMainWindow):
         settings_layout = QHBoxLayout()
         
         self.game_mode_combo = QComboBox()
-        self.game_mode_combo.addItems(["30人", "单人"])
+        self.game_mode_combo.addItems(["单人", "30人"])
         settings_layout.addWidget(QLabel("模式:"))
         settings_layout.addWidget(self.game_mode_combo)
         

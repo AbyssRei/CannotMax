@@ -2,7 +2,6 @@ import csv
 import shutil
 import sys
 from pathlib import Path
-import unpackage
 
 # 获取项目根目录
 base_dir = Path(__file__).resolve().parent
@@ -13,6 +12,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from config import MONSTER_COUNT, FIELD_FEATURE_COUNT
+import unpackage
 
 def get_expected_header():
     """根据 start_auto_fetch 的逻辑生成预期表头"""
@@ -45,16 +45,17 @@ def read_csv_data(filepath):
             continue
     raise ValueError(f"无法以支持的编码读取文件 {filepath}")
 
-def main():
+def main(merge_images=True):
     target_images_dir = base_dir / 'images'
     target_csv_path = base_dir / 'arknights.csv'
 
     # 清理旧数据
-    if target_images_dir.exists():
-        shutil.rmtree(target_images_dir)
+    if merge_images:
+        if target_images_dir.exists():
+            shutil.rmtree(target_images_dir)
+        target_images_dir.mkdir(parents=True, exist_ok=True)
+    
     target_csv_path.unlink(missing_ok=True)
-
-    target_images_dir.mkdir(parents=True, exist_ok=True)
 
     expected_header = get_expected_header()
     img_path_idx = expected_header.index("ImgPath")
@@ -82,15 +83,22 @@ def main():
                     continue
 
                 if current_header != expected_header:
-                    print(f"目录 {sub_dir.name}: arknights.csv 的表头不符合预期格式 (共 {len(data)} 行)")
+                    print(f"跳过目录 {sub_dir.name}: arknights.csv 的表头不符合预期格式 (共 {len(data)} 行)")
+                    continue
                 
                 # 合并图片
-                src_images_dir = sub_dir / 'images'
-                if src_images_dir.exists() and src_images_dir.is_dir():
-                    for src_img in src_images_dir.iterdir():
-                        if src_img.is_file():
-                            dst_img = target_images_dir / src_img.name
-                            shutil.move(str(src_img), str(dst_img))
+                if merge_images:
+                    src_images_dir = sub_dir / 'images'
+                    if src_images_dir.exists() and src_images_dir.is_dir():
+                        for src_img in src_images_dir.iterdir():
+                            if src_img.is_file():
+                                dst_img = target_images_dir / src_img.name
+                                try:
+                                    shutil.move(str(src_img), str(dst_img))
+                                except Exception:
+                                    # 如果跨盘符移动失败或其他异常，回退到拷贝并删除
+                                    shutil.copy2(str(src_img), str(dst_img))
+                                    src_img.unlink()
                 
                 # 增加重复检查
                 added_count = 0
@@ -118,5 +126,7 @@ def main():
         print("\n未找到有效的 CSV 数据。")
 
 if __name__ == '__main__':
-    unpackage.unpackage()  # 解压数据包
-    main()
+    merge_imgs = False
+
+    unpackage.unpackage(extract_images=merge_imgs)  # 解压数据包
+    main(merge_images=merge_imgs)

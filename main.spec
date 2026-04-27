@@ -6,7 +6,7 @@ block_cipher = None
 project_root = os.path.abspath(os.getcwd())
 
 a = Analysis(
-    ['main.py'],
+    ['main.py', 'multi_instance.py'],
     pathex=[project_root],
     binaries=[],
     datas=[
