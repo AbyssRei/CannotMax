@@ -65,6 +65,10 @@
    uv run train.py
    ```
 
+## 开发说明
+
+- 使用AI编程助手时建议导入[MAA Framework的Skill库](https://github.com/Kutius/maaframework-skills)
+
 ## 注意事项
 
 - **分辨率适配**：模拟器/客户端建议设置为 `1920*1080`。

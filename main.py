@@ -17,6 +17,9 @@ import PyQt6.QtCore as QtCore
 
 import loadData
 import auto_fetch
+import maa_adb_connector
+from maa_adb_connector import AdbConnectorAdapter, ConnectionTypeRegistry, InputMethodRegistry, MaaFrameworkDetector
+from dark_mode_style_fix import DarkModeStyleFix
 import similar_history_match
 import recognize
 from recognize import MONSTER_COUNT
@@ -94,7 +97,7 @@ class ArknightsApp(QMainWindow):
         self.current_capture_mode = "ADB"
 
         # 尝试连接模拟器
-        self.adb_connector = loadData.AdbConnector()
+        self.adb_connector = AdbConnectorAdapter()
         self.pc_connector = loadData.PcConnector()
         self.adb_connector_thread = ADBConnectorThread(self)
         self.adb_connector_thread.connect_finished.connect(self.on_adb_connected)
@@ -233,6 +236,7 @@ class ArknightsApp(QMainWindow):
         self.result_label = QLabel("预测结果将显示在这里")
         self.result_label.setFont(QFont("Microsoft YaHei", 12))
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.result_label.setStyleSheet("color: #313131;")
         result_layout.addWidget(self.result_label)
 
         # 添加模型名称显示
@@ -240,7 +244,7 @@ class ArknightsApp(QMainWindow):
         self.model_name_label = QLabel(f"model: {model_name}")
         self.model_name_label.setFont(QFont("Microsoft YaHei", 8))
         self.model_name_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom)
-        self.model_name_label.setStyleSheet("color: #888888;")  # 小字灰色
+        self.model_name_label.setStyleSheet("color: #666666;")
         result_layout.addWidget(self.model_name_label)
 
         # 第二行按钮result_identify_group
@@ -372,6 +376,33 @@ class ArknightsApp(QMainWindow):
         self.win_mode_btn.clicked.connect(lambda: self.on_mode_changed("WIN"))
         connection_layout.addWidget(mode_row)
 
+        # MAA连接方式行
+        maa_row = QWidget()
+        maa_row_layout = QHBoxLayout(maa_row)
+        maa_row_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.connection_type_label = QLabel("连接方式:")
+        self.connection_type_combo = QComboBox()
+        for ct in ConnectionTypeRegistry.get_all_types():
+            self.connection_type_combo.addItem(ct.display_name, ct.type_id)
+        self.connection_type_combo.currentIndexChanged.connect(self.on_connection_type_changed)
+
+        self.input_method_label = QLabel("输入方式:")
+        self.input_method_combo = QComboBox()
+        default_method = InputMethodRegistry.get_default_method()
+        for m in InputMethodRegistry.get_all_methods():
+            self.input_method_combo.addItem(m.display_name, m.method_id)
+        idx = self.input_method_combo.findData(default_method.method_id)
+        if idx >= 0:
+            self.input_method_combo.setCurrentIndex(idx)
+        self.input_method_combo.currentIndexChanged.connect(self.on_input_method_changed)
+
+        maa_row_layout.addWidget(self.connection_type_label)
+        maa_row_layout.addWidget(self.connection_type_combo)
+        maa_row_layout.addWidget(self.input_method_label)
+        maa_row_layout.addWidget(self.input_method_combo)
+        connection_layout.addWidget(maa_row)
+
         # 序列号行
         conn_row1 = QWidget()
         conn_row1_layout = QHBoxLayout(conn_row1)
@@ -380,7 +411,7 @@ class ArknightsApp(QMainWindow):
         self.serial_label = QLabel("模拟器序列号:")
         self.serial_entry = QComboBox()
         self.serial_entry.setEditable(True)
-        self.serial_entry.setFixedWidth(150)
+        self.serial_entry.setFixedWidth(200)
         self.serial_entry.lineEdit().setPlaceholderText("127.0.0.1:5555")
 
         self.serial_button = QPushButton("更新")
@@ -389,6 +420,14 @@ class ArknightsApp(QMainWindow):
         conn_row1_layout.addWidget(self.serial_label)
         conn_row1_layout.addWidget(self.serial_entry)
         conn_row1_layout.addWidget(self.serial_button)
+
+        # MAA状态行
+        self.maa_status_label = QLabel("")
+        self.maa_status_label.setStyleSheet("color: #666666; font-size: 10px;")
+        self.maa_status_label.setWordWrap(True)
+
+        connection_layout.addWidget(conn_row1)
+        connection_layout.addWidget(self.maa_status_label)
 
         # 捕获设置行
         conn_row2 = QWidget()
@@ -466,6 +505,7 @@ class ArknightsApp(QMainWindow):
         self.update_prediction_signal.connect(self.update_prediction)
         self.update_statistics_signal.connect(self.update_statistics)
         self.refresh_device_list()
+        DarkModeStyleFix.apply(QApplication.instance())
 
     def toggle_input_panel(self):
         """切换输入面板的显示"""
@@ -522,6 +562,10 @@ class ArknightsApp(QMainWindow):
         self.serial_label.setEnabled(is_adb_mode)
         self.serial_entry.setEnabled(is_adb_mode)
         self.serial_button.setEnabled(is_adb_mode)
+        self.connection_type_label.setEnabled(is_adb_mode)
+        self.connection_type_combo.setEnabled(is_adb_mode)
+        self.input_method_label.setEnabled(is_adb_mode)
+        self.input_method_combo.setEnabled(is_adb_mode)
 
         if mode == "ADB":
             self.refresh_device_list()
@@ -542,6 +586,34 @@ class ArknightsApp(QMainWindow):
 
     def on_adb_connected(self):
         logger.info("模拟器初始化完成")
+        if self.adb_connector.is_maa_available:
+            self.maa_status_label.setText("MAA Framework已连接")
+            self.maa_status_label.setStyleSheet("color: #00aa00; font-size: 10px;")
+        else:
+            self.maa_status_label.setText("使用自有ADB实现（MAA Framework不可用）")
+            self.maa_status_label.setStyleSheet("color: #996600; font-size: 10px;")
+
+    def on_connection_type_changed(self, index):
+        type_id = self.connection_type_combo.currentData()
+        if not type_id:
+            return
+        default_address = ConnectionTypeRegistry.get_default_address(type_id)
+        if default_address:
+            self.serial_entry.setCurrentText(default_address)
+            self.adb_connector.set_connection_type(type_id)
+            self.adb_connector.set_device_serial(default_address)
+        if self.adb_connector.is_connected:
+            self.adb_connector.disconnect()
+            self.maa_status_label.setText("已断开，请重新连接")
+            self.maa_status_label.setStyleSheet("color: #aa0000; font-size: 10px;")
+
+    def on_input_method_changed(self, index):
+        method_id = self.input_method_combo.currentData()
+        if not method_id:
+            return
+        self.adb_connector.set_input_method(method_id)
+        if self.adb_connector.is_connected:
+            QMessageBox.information(self, "提示", "输入方式已更改，请重新连接以生效")
 
     def choose_capture_window(self):
         """弹出窗口选择器，切换 WinRT 截屏源（窗口标题或整屏）。"""

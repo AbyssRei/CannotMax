@@ -1,6 +1,7 @@
 venv/
 __pycache__/
 .idea/
+.vscode/
 screenshot.png
 tmp
 log.txt
@@ -14,8 +15,17 @@ build/
 output/
 *.pth
 *.onnx
+*.onnx.data
 data_train/tmp/
 data_train/package/*.zip
 data_train/images/
-multi_ports.txt
-arknights.csv
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+# other
+.claude/
+.codex/
+.copilot/
+.codeartdoer/
