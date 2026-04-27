@@ -83,8 +83,7 @@ def main(merge_images=True):
                     continue
 
                 if current_header != expected_header:
-                    print(f"跳过目录 {sub_dir.name}: arknights.csv 的表头不符合预期格式 (共 {len(data)} 行)")
-                    continue
+                    print(f"目录 {sub_dir.name}: arknights.csv 的表头不符合预期格式 (共 {len(data)} 行)")
                 
                 # 合并图片
                 if merge_images:
@@ -93,13 +92,8 @@ def main(merge_images=True):
                         for src_img in src_images_dir.iterdir():
                             if src_img.is_file():
                                 dst_img = target_images_dir / src_img.name
-                                try:
-                                    shutil.move(str(src_img), str(dst_img))
-                                except Exception:
-                                    # 如果跨盘符移动失败或其他异常，回退到拷贝并删除
-                                    shutil.copy2(str(src_img), str(dst_img))
-                                    src_img.unlink()
-                
+                                shutil.move(str(src_img), str(dst_img))
+
                 # 增加重复检查
                 added_count = 0
                 skip_count = 0

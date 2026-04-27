@@ -235,8 +235,9 @@ class AutoFetch:
         if intelligent_workers_debug:  # 如果处于debug模式，保存人工审核图片到本地
             if monster_image is not None:
                 try:
+                    resized_monster_img = cv2.resize(monster_image, (960, 540)) # 调整分辨率为 960x540
                     image_path = images_folder / (image_name + ".jpg")
-                    cv2.imwrite(image_path, monster_image, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                    cv2.imwrite(image_path, resized_monster_img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                     # logger.info(f"保存怪物图片到 {image_path}")
                 except Exception as e:
                     logger.error(f"保存怪物图片失败: {e}")
