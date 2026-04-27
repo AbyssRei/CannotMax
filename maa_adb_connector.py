@@ -60,7 +60,7 @@ class MaaConnectionConfig:
     screencap_method: int = 1
     input_method: int = 4
     screenshot_use_raw_size: bool = True
-    config: str = ""
+    config: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -229,8 +229,8 @@ class MaaAdbConnector:
             self._ctrl = AdbController(
                 self._config.adb_path,
                 target_serial,
-                screencap_method=self._config.screencap_method,
-                input_method=self._config.input_method,
+                screencap_methods=self._config.screencap_method,
+                input_methods=self._config.input_method,
                 config=self._config.config,
             )
 
