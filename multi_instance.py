@@ -46,14 +46,16 @@ class LogDisplay(QPlainTextEdit):
     def append_log(self, text):
         self.log_signal.emit(text)
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='multi_instance.log',
-    filemode='a'
+logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger("PIL").setLevel(logging.INFO)
+stream_handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+stream_handler.setFormatter(formatter)
+logging.getLogger().addHandler(stream_handler)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 # 用于共享资源密集型对象，减少多开时的内存占用
 _cannot_model = None

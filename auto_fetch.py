@@ -519,7 +519,6 @@ class AutoFetch:
             (0.4979, 0.6324),  # 本轮观望
         ]
         timea = time.time()
-        self._log(logging.DEBUG, "开始执行 auto_fetch_data 方法")
         screenshot = self.connector.capture_screenshot()
         if screenshot is None:
             self._log(logging.ERROR, "截图失败，尝试自动登录")
@@ -635,13 +634,16 @@ class AutoFetch:
                         return
                     self.connector.click(relative_points[0])
                     self._log(logging.INFO, "开始游戏")
+                    time.sleep(1)
                 else:
                     self.connector.click(relative_points[2])
                     self._log(logging.INFO, "自娱自乐")
+                    time.sleep(1)
             case GameState.MODE_SELECTION_SELECTED:
                 # 选择模式界面（已选择），点击开始游戏跳转到怪物数量界面状态
                 self.connector.click(relative_points[0])
                 self._log(logging.INFO, "开始游戏")
+                time.sleep(1)
             case GameState.PRE_BATTLE:
                 # 怪物数量界面状态，识别并开始游戏，跳转到等待结算状态
                 if not self._sleep_with_check(1):
