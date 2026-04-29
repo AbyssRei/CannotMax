@@ -14,7 +14,7 @@ from config import FIELD_FEATURE_COUNT, MONSTER_COUNT
 
 # 导入拆分到 models 文件夹中的模型和 Muon 优化器方法
 from models.model import UnitAwareTransformer
-from models.muon import get_muon_adamw_optimizers
+from models.muon import get_muon_lion_optimizers
 
 
 @cache
@@ -140,7 +140,7 @@ class ArknightsDataset(Dataset):
         )
 
 
-def train_one_epoch(model, train_loader, criterion, muon_opt, adamw_opt, scaler=None):
+def train_one_epoch(model, train_loader, criterion, muon_opt, lion_opt, scaler=None):
     model.train()
     total_loss = 0
     correct = 0
@@ -153,7 +153,7 @@ def train_one_epoch(model, train_loader, criterion, muon_opt, adamw_opt, scaler=
 
         # 清空所有的梯度
         muon_opt.zero_grad()
-        adamw_opt.zero_grad()
+        lion_opt.zero_grad()
 
         # 检查输入值范围
         if (
@@ -194,7 +194,8 @@ def train_one_epoch(model, train_loader, criterion, muon_opt, adamw_opt, scaler=
                     print("警告: 模型输出不在[0,1]范围内，进行修正")
                     outputs = torch.clamp(outputs, 1e-7, 1 - 1e-7)
 
-                loss = criterion(outputs, labels)
+            # 将损失函数计算移出 autocast 区域，并强制使用 float32 避免安全警告
+            loss = criterion(outputs.float(), labels.float())
 
             # 检查loss是否有效
             if torch.isnan(loss) or torch.isinf(loss):
@@ -206,20 +207,20 @@ def train_one_epoch(model, train_loader, criterion, muon_opt, adamw_opt, scaler=
 
                 # 混合优化器时需要分别 unscale 进行统一梯度裁剪
                 scaler.unscale_(muon_opt)
-                scaler.unscale_(adamw_opt)
+                scaler.unscale_(lion_opt)
 
                 # 梯度裁剪，避免梯度爆炸
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
                 scaler.step(muon_opt)
-                scaler.step(adamw_opt)
+                scaler.step(lion_opt)
                 scaler.update()
             else:  # 不使用混合精度
                 loss.backward()
                 # 梯度裁剪，避免梯度爆炸
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 muon_opt.step()
-                adamw_opt.step()
+                lion_opt.step()
 
             total_loss += loss.item()
             preds = (outputs > 0.5).float()
@@ -277,7 +278,8 @@ def evaluate(model, data_loader, criterion):
                     if (outputs < 0).any() or (outputs > 1).any():
                         outputs = torch.clamp(outputs, 1e-7, 1 - 1e-7)
 
-                loss = criterion(outputs, labels)
+                # 将损失函数计算移出 autocast 区域，并强制使用 float32 避免安全警告
+                loss = criterion(outputs.float(), labels.float())
 
                 # 检查loss是否有效
                 if torch.isnan(loss) or torch.isinf(loss):
@@ -320,8 +322,8 @@ def main():
         "embed_dim": 128,  # 512
         "n_layers": 3,  # 3也可以
         "num_heads": 16,
-        "lr": 1e-3,  # Muon 优化器可以改大一点
-        "epochs": 40,  # Muon 优化器一般 40 epochs 足够过拟合
+        "lr": 1e-3,  # 新优化器可以改大一点 (甚至可以再大点)
+        "epochs": 30,  # 一般 30 epochs 足够过拟合
         "seed": 42,  # 随机数种子
         "save_dir": "models",  # 存到哪里
         "max_feature_value": 100,  # 限制特征最大值，防止极端值造成不稳定
@@ -409,13 +411,15 @@ def main():
         f"模型参数数量: {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
     )
 
-    # 损失函数和优化器 (引入 Muon 混合策略)
-    criterion = nn.MSELoss()
-    muon_opt, adamw_opt = get_muon_adamw_optimizers(
-        model, lr=config["lr"], weight_decay=1e-1
+    # 损失函数和优化器 (引入 Muon 与 Lion 混合策略)
+    criterion = nn.BCELoss()
+    # 论文指出 Lion 优化器需要更小的学习率，但需要更小的学习率不太可能
+    lion_lr = config["lr"] / 1.0
+    muon_opt, lion_opt = get_muon_lion_optimizers(
+        model, muon_lr=config["lr"], lion_lr=lion_lr, weight_decay=1e-1
     )
     scheduler_muon = optim.lr_scheduler.CosineAnnealingLR(muon_opt, T_max=config["epochs"])
-    scheduler_adamw = optim.lr_scheduler.CosineAnnealingLR(adamw_opt, T_max=config["epochs"])
+    scheduler_lion = optim.lr_scheduler.CosineAnnealingLR(lion_opt, T_max=config["epochs"])
 
     # 训练历史记录
     train_losses = []
@@ -433,7 +437,7 @@ def main():
 
         # 训练
         train_loss, train_acc = train_one_epoch(
-            model, train_loader, criterion, muon_opt, adamw_opt, scaler
+            model, train_loader, criterion, muon_opt, lion_opt, scaler
         )
 
         # 验证
@@ -441,7 +445,7 @@ def main():
 
         # 更新学习率
         scheduler_muon.step()
-        scheduler_adamw.step()
+        scheduler_lion.step()
 
         # 记录历史
         train_losses.append(train_loss)
