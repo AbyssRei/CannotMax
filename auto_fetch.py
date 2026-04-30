@@ -690,9 +690,10 @@ class AutoFetch:
                 # 每次循环开始时检查状态
                 if not self.auto_fetch_running:
                     break
-                
+ 
+                self.updater() # 多开器如果不更新会强制停止
                 self.auto_fetch_data()
-                
+
                 # 每次循环结束时检查状态
                 if not self.auto_fetch_running:
                     break
