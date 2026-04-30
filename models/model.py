@@ -3,7 +3,7 @@ import torch.nn as nn
 from config import FIELD_FEATURE_COUNT, MONSTER_COUNT
 
 class UnitAwareTransformer(nn.Module):
-    def __init__(self, num_units, embed_dim=128, num_heads=8, num_layers=4):
+    def __init__(self, num_units, embed_dim=256, num_heads=4, num_layers=4, dropout=0.3):
         super().__init__()
         # num_units，包括怪物种类和场地特征种类
         # 怪物特征 + 场地特征 = 总特征数量
@@ -20,6 +20,7 @@ class UnitAwareTransformer(nn.Module):
         self.value_ffn = nn.Sequential(
             nn.Linear(embed_dim, embed_dim * 2),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(embed_dim * 2, embed_dim),
         )
 
@@ -34,14 +35,14 @@ class UnitAwareTransformer(nn.Module):
             # 敌方注意力层
             self.enemy_attentions.append(
                 nn.MultiheadAttention(
-                    embed_dim, num_heads, batch_first=True, dropout=0.2
+                    embed_dim, num_heads, batch_first=True, dropout=dropout
                 )
             )
             self.enemy_ffn.append(
                 nn.Sequential(
                     nn.Linear(embed_dim, embed_dim * 2),
                     nn.ReLU(),
-                    nn.Dropout(0.2),
+                    nn.Dropout(dropout),
                     nn.Linear(embed_dim * 2, embed_dim),
                 )
             )
@@ -49,14 +50,14 @@ class UnitAwareTransformer(nn.Module):
             # 友方注意力层
             self.friend_attentions.append(
                 nn.MultiheadAttention(
-                    embed_dim, num_heads, batch_first=True, dropout=0.2
+                    embed_dim, num_heads, batch_first=True, dropout=dropout
                 )
             )
             self.friend_ffn.append(
                 nn.Sequential(
                     nn.Linear(embed_dim, embed_dim * 2),
                     nn.ReLU(),
-                    nn.Dropout(0.2),
+                    nn.Dropout(dropout),
                     nn.Linear(embed_dim * 2, embed_dim),
                 )
             )
@@ -69,7 +70,10 @@ class UnitAwareTransformer(nn.Module):
 
         # 全连接输出层
         self.fc = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim * 2), nn.ReLU(), nn.Linear(embed_dim * 2, 1)
+            nn.Linear(embed_dim, embed_dim * 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(embed_dim * 2, 1)
         )
 
     def forward(self, left_signs, left_counts, right_signs, right_counts):
