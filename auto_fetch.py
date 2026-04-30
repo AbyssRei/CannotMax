@@ -691,9 +691,6 @@ class AutoFetch:
                 if not self.auto_fetch_running:
                     break
                 
-                # 更新活动时间（心跳）
-                self.update_prediction_callback(0)
-                
                 self.auto_fetch_data()
                 
                 # 每次循环结束时检查状态
@@ -705,7 +702,7 @@ class AutoFetch:
                     self._log(logging.INFO, "已达到设定时长，结束自动获取")
                     break
                 # 检测一次间隔时间——————————————————————————————————
-                time.sleep(0.1)
+                time.sleep(0.2)
             except Exception as e:
                 self._log(logging.ERROR, f"自动获取数据出错:\n{e}")
                 break
