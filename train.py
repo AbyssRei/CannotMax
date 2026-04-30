@@ -22,6 +22,7 @@ print(f"场地特征数量: {FIELD_FEATURE_COUNT}")
 # 计算总特征数量 (怪物特征 + 场地特征) * 2 + Result + ImgPath
 TOTAL_FEATURE_COUNT = (MONSTER_COUNT + FIELD_FEATURE_COUNT) * 2
 
+
 @cache
 def get_device(prefer_gpu=True):
     """
@@ -39,12 +40,13 @@ def get_device(prefer_gpu=True):
 
 device = get_device()
 
+
 def plot_learning_curve(train_losses, val_losses, train_accs, val_accs, save_path):
     """绘制学习曲线并保存为图片"""
     epochs = range(1, len(train_losses) + 1)
-    
+
     plt.figure(figsize=(12, 5))
-    
+
     # 绘制 Loss 曲线
     plt.subplot(1, 2, 1)
     plt.plot(epochs, train_losses, 'b-', label='Train Loss')
@@ -54,7 +56,7 @@ def plot_learning_curve(train_losses, val_losses, train_accs, val_accs, save_pat
     plt.ylabel('Loss')
     plt.legend()
     plt.grid(True)
-    
+
     # 绘制 Accuracy 曲线
     plt.subplot(1, 2, 2)
     plt.plot(epochs, train_accs, 'b-', label='Train Acc')
@@ -64,11 +66,12 @@ def plot_learning_curve(train_losses, val_losses, train_accs, val_accs, save_pat
     plt.ylabel('Accuracy (%)')
     plt.legend()
     plt.grid(True)
-    
+
     plt.tight_layout()
     plt.savefig(save_path)
     print(f"学习曲线已保存至: {save_path}")
     plt.close()
+
 
 def preprocess_data(csv_file):
     """预处理CSV文件，将异常值修正为合理范围"""
@@ -185,7 +188,7 @@ def train_one_epoch(model, train_loader, criterion, muon_opt, lion_opt, scaler=N
         muon_opt.zero_grad()
         lion_opt.zero_grad()
 
-        # 检查输入值范围
+        # 检查输入数据
         if (
                 torch.isnan(ls).any()
                 or torch.isnan(lc).any()
@@ -234,14 +237,11 @@ def train_one_epoch(model, train_loader, criterion, muon_opt, lion_opt, scaler=N
 
             if scaler:  # 使用混合精度
                 scaler.scale(loss).backward()
-
                 # 混合优化器时需要分别 unscale 进行统一梯度裁剪
                 scaler.unscale_(muon_opt)
                 scaler.unscale_(lion_opt)
-
                 # 梯度裁剪，避免梯度爆炸
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
                 scaler.step(muon_opt)
                 scaler.step(lion_opt)
                 scaler.update()
@@ -303,7 +303,6 @@ def evaluate(model, data_loader, criterion):
                     if torch.isnan(outputs).any() or torch.isinf(outputs).any():
                         print("警告: 评估时模型输出包含NaN或Inf，跳过该批次")
                         continue
-
                     # 确保输出严格在0-1之间
                     if (outputs < 0).any() or (outputs > 1).any():
                         outputs = torch.clamp(outputs, 1e-7, 1 - 1e-7)
@@ -349,12 +348,13 @@ def main():
         "data_file": "arknights.csv",
         "batch_size": 1024,
         "test_size": 0.1,
-        "embed_dim": 128,  # 512
-        "n_layers": 3,  # 3也可以
+        "embed_dim": 256,
+        "n_layers": 3,
         "num_heads": 4,
+        "dropout": 0.3,  # Dropout 设置
         "lr": 3e-4,  # 新优化器可以改大一点
-        "lion_lr": 3e-4 / 10,  # 论文指出 Lion 优化器需要更小的学习率，但需要更小的学习率不太可能
-        "epochs": 50,  # 一般 30 epochs 足够过拟合
+        "lion_lr": 3e-4 / 10,  # 论文指出 Lion 优化器需要更小的学习率
+        "epochs": 50,
         "seed": 42,  # 随机数种子
         "save_dir": "models",  # 存到哪里
         "max_feature_value": 100,  # 限制特征最大值，防止极端值造成不稳定
@@ -373,7 +373,7 @@ def main():
     # 设置设备
     print(f"使用设备: {device}")
 
-    # 初始化 GradScaler 用于混合精度训练
+    # 初始化 GradScaler
     scaler = None
     if device.type == "cuda":
         try:
@@ -387,12 +387,11 @@ def main():
         print(f"CUDA设备数量: {torch.cuda.device_count()}")
         print(f"当前CUDA设备: {torch.cuda.current_device()}")
         print(f"CUDA设备名称: {torch.cuda.get_device_name(0)}")
-
         # 设置确定性计算以增加稳定性
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = True
     elif str(device) == "cpu":
-        print("警告: 未检测到GPU，将在CPU上运行训练，这可能会很慢!")
+        print("警告: 未检测到GPU，将在CPU上运行训练!")
 
     # 先预处理数据，检查是否有异常值
     num_data = preprocess_data(config["data_file"])
@@ -434,15 +433,13 @@ def main():
         embed_dim=config["embed_dim"],
         num_heads=config["num_heads"],
         num_layers=config["n_layers"],
+        dropout=config["dropout"],  # 传入 dropout
     ).to(device)
 
     print(f"模型使用特征数: 怪物({MONSTER_COUNT}) + 场地({FIELD_FEATURE_COUNT}) = {total_units}")
+    print(f"模型参数数量: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
-    print(
-        f"模型参数数量: {sum(p.numel() for p in model.parameters() if p.requires_grad)}"
-    )
-
-    # 损失函数和优化器 (引入 Muon 与 Lion 混合策略)
+    # 损失函数和优化器 (引入 Muon 与 Lion)
     criterion = nn.MSELoss()
     muon_opt, lion_opt = get_muon_lion_optimizers(
         model, muon_lr=config["lr"], lion_lr=config["lion_lr"], weight_decay=1e-1
@@ -451,14 +448,9 @@ def main():
     scheduler_lion = optim.lr_scheduler.CosineAnnealingLR(lion_opt, T_max=config["epochs"])
 
     # 训练历史记录
-    train_losses = []
-    val_losses = []
-    train_accs = []
-    val_accs = []
-
+    train_losses, val_losses, train_accs, val_accs = [], [], [], []
     # 训练设置
-    best_acc = 0
-    best_loss = float("inf")
+    best_acc, best_loss = 0, float("inf")
 
     # 训练循环
     for epoch in range(config["epochs"]):
@@ -468,7 +460,6 @@ def main():
         train_loss, train_acc = train_one_epoch(
             model, train_loader, criterion, muon_opt, lion_opt, scaler
         )
-
         # 验证
         val_loss, val_acc = evaluate(model, val_loader, criterion)
 
@@ -485,26 +476,17 @@ def main():
         # 保存最佳模型（基于准确率）
         if val_acc > best_acc:
             best_acc = val_acc
-            torch.save(
-                model,
-                Path(config["save_dir"]) / "best_model_acc.pth",
-            )
+            torch.save(model, Path(config["save_dir"]) / "best_model_acc.pth")
             print("保存了新的最佳准确率模型!")
 
         # 保存最佳模型（基于损失）
         if val_loss < best_loss:
             best_loss = val_loss
-            torch.save(
-                model,
-                Path(config["save_dir"]) / "best_model_loss.pth",
-            )
+            torch.save(model, Path(config["save_dir"]) / "best_model_loss.pth")
             print("保存了新的最佳损失模型!")
 
         print(f"最佳准确率为: {best_acc:.2f}, 最佳损失为: {best_loss:.4f}")
-
-        torch.save(
-            model, Path(config["save_dir"]) / "best_model_full.pth"
-        )  # 最后一次计算的模型
+        torch.save(model, Path(config["save_dir"]) / "best_model_full.pth")
 
         # 保存最新模型
         # torch.save({
@@ -530,42 +512,24 @@ def main():
             epoch_duration = current_time - epoch_start_time
             elapsed_time = current_time - start_time
             avg_epoch_time = elapsed_time / (epoch + 1)
-            estimated_total_time = avg_epoch_time * config["epochs"]
-            remaining_time = estimated_total_time - elapsed_time
-
-            print(f"Epoch Time: {epoch_duration:.2f}s, Elapsed Time: {elapsed_time / 60:.2f}min, Estimated Remaining Time: {remaining_time / 60:.2f}min, Estimated Total Time: {estimated_total_time / 60:.2f}min")
+            remaining_time = (avg_epoch_time * config["epochs"]) - elapsed_time
+            print(f"Epoch Time: {epoch_duration:.2f}s, Estimated Remaining: {remaining_time / 60:.2f}min")
             epoch_start_time = current_time  # Reset for next epoch
 
         print("-" * 40)
 
-    print(f"训练完成! 最佳验证准确率: {best_acc:.2f}%, 最佳验证损失: {best_loss:.4f}")
-
-    # 训练完成后重命名模型文件
+    # 重命名与绘图
     current_time_str = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     base_filename = f"data{data_length}_acc{best_acc:.4f}_loss{best_loss:.4f}_{current_time_str}.pth"
-
     save_dir_path = Path(config["save_dir"])
 
-    old_acc_path = save_dir_path / "best_model_acc.pth"
-    new_acc_path = save_dir_path / f"best_model_acc_{base_filename}"
-    if old_acc_path.exists():
-        old_acc_path.rename(new_acc_path)
-        print(f"模型文件已重命名: {old_acc_path} -> {new_acc_path}")
+    for model_type in ["acc", "loss", "full"]:
+        old_path = save_dir_path / f"best_model_{model_type}.pth"
+        if old_path.exists():
+            old_path.rename(save_dir_path / f"best_model_{model_type}_{base_filename}")
 
-    old_loss_path = save_dir_path / "best_model_loss.pth"
-    new_loss_path = save_dir_path / f"best_model_loss_{base_filename}"
-    if old_loss_path.exists():
-        old_loss_path.rename(new_loss_path)
-        print(f"模型文件已重命名: {old_loss_path} -> {new_loss_path}")
-
-    old_full_path = save_dir_path / "best_model_full.pth"
-    new_full_path = save_dir_path / f"best_model_full_{base_filename}"
-    if old_full_path.exists():
-        old_full_path.rename(new_full_path)
-        print(f"模型文件已重命名: {old_full_path} -> {new_full_path}")
-
-    # 绘制学习曲线
-    plot_learning_curve(train_losses, val_losses, train_accs, val_accs, save_dir_path / f"learning_curve_{base_filename}.png")
+    plot_learning_curve(train_losses, val_losses, train_accs, val_accs,
+                        save_dir_path / f"learning_curve_{base_filename}.png")
 
 
 if __name__ == "__main__":
