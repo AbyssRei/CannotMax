@@ -1,5 +1,6 @@
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 import queue
 import threading
 import os
@@ -9,12 +10,24 @@ import tkinter as tk
 
 # from tkinter import messagebox # messagebox 已被自定义提示替代，可以注释或移除
 from PIL import Image, ImageTk
-from src.simulation.battle_field import Battlefield
+
 import json
 import random
 import sys
-from src.core.config import MONSTER_DATA, MONSTER_IMAGES
-from src.recognition.recognize import MONSTER_COUNT
+
+
+
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    from src.simulation.battle_field import Battlefield
+    from src.core.config import MONSTER_DATA, MONSTER_IMAGES, MONSTER_COUNT
+    from src.core.paths import DATA_DIR, PROJECT_ROOT, simulation_path
+    from src.simulation.utils import Faction
+else:
+    from ..simulation.battle_field import Battlefield
+    from ..core.config import MONSTER_DATA, MONSTER_IMAGES, MONSTER_COUNT
+    from ..core.paths import DATA_DIR, PROJECT_ROOT, simulation_path
+    from ..simulation.utils import Faction
 
 
 class AppState(Enum):
@@ -181,7 +194,7 @@ class SandboxSimulator:
         self.monster_icon_key_map = {}
         self.default_icon_key = "empty" if "empty" in MONSTER_IMAGES else ""
         try:
-            with open("../simulation/monsters.json", encoding="utf-8") as f:
+            with open(simulation_path("monsters.json"), encoding="utf-8") as f:
                 self.monster_data = json.load(f)["monsters"]
         except FileNotFoundError:
             print("错误: monsters.json 未找到，请检查路径！")
